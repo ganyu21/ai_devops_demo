@@ -33,7 +33,22 @@ const missing = uniq.filter(x => !params.some(p => p.key === x));
 const unused = params.map(p => p.key).filter(k => !uniq.includes(k));
 console.log("缺失参数: " + (missing.length ? missing.join(",") : "无") + " | 未用参数: " + (unused.length ? unused.join(",") : "无"));
 
-// 退役口径守卫：GitHub 版 SOP 正文里不该再出现内部平台的命令与单据口径。
-const banned = ["a1 repo", "a1 project", "a1 ci", "a1 quality", "Aone", "MR ", "approver_number", "code.alibaba-inc.com", "devflow/shortlink-service"];
-const hits = banned.filter(w => body.includes(w));
+// 退役口径守卫：GitHub 版 SOP 正文里不该再出现上一代内部协作平台的口径。
+// 用模式而不是字面量——这份脚本在公开仓里，把内部平台名与内部域名字面写进列表，
+// 守卫自己就成了泄漏源（本轮就是这么发现的）。
+const bannedPatterns = [
+  { name: "内部 CLI 调用", re: /\ba1\s+(repo|project|ci|quality|workitem)\b/ },
+  { name: "非 github.com 的 git 主机", re: /(?:git@|https?:\/\/)(?!github\.com)[\w.-]+\.[a-z]{2,}/ },
+  { name: "MR 术语（应为 PR）", re: /\bMR\b/ },
+  { name: "内部评审规则码", re: /approver_number/ },
+  { name: "旧靶仓路径", re: /(?<![.\w])devflow\// },   // 前面不能是 . 或单词字符，否则误伤本仓的 .devflow/ 产物目录
+  { name: "8 位以上裸单号", re: /(?<![\w./-])\d{8,}(?![\w./-])/ },
+  { name: "机器用户名硬编码", re: /\/Users\/[\w-]+\// },
+];
+const hits = [];
+for (const p of bannedPatterns) {
+  const m = body.match(p.re);
+  if (m) hits.push(p.name + " → " + JSON.stringify(m[0]));
+}
 console.log("退役口径残留: " + (hits.length ? hits.join(" | ") : "无"));
+if (hits.length) process.exitCode = 1;
