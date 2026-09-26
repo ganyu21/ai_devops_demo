@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
 public class ShortCodeGenerator {
 
     /** 短码长度，见类注释。 */
-    public static final int CODE_LENGTH = 8;
+    public static final int CODE_LENGTH = 6;
 
     private static final char[] BASE62 =
             "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz".toCharArray();
