@@ -1,0 +1,11 @@
+{
+  "_comment": "要追加到每个 Waker 的 fileGuard.sensitiveFiles 的路径。用 ${HOME} 占位而不是写死家目录：这份文件在公开仓里，不该带上机器用户名。install.sh 会展开占位符，并与该 Waker 现有的清单合并（不整份替换，避免冲掉本机已有的条目）。",
+  "add": [
+    "${HOME}/.config/ai-devops-lab/",
+    "${HOME}/jenkins-lab/home/",
+    "${HOME}/jenkins-lab/admin-token.txt",
+    "${HOME}/jenkins-lab/secrets/",
+    "${HOME}/.qoderwake/data/store/",
+    "${HOME}/.ssh/"
+  ]
+}
