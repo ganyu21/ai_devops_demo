@@ -1,0 +1,22 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: shortlink-service
+  datasource:
+    url: jdbc:h2:file:./data/shortlink;MODE=LEGACY
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  flyway:
+    enabled: false
+    locations: classpath:db/migration
+
+shortlink:
+  public-base-url: http://localhost:8081
+  redirect-budget-millis: 300
+
+logging:
+  level:
+    com.lab.shortlink: INFO

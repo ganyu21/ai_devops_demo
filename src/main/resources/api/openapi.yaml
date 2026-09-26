@@ -1,0 +1,90 @@
+# 对外契约（冻结）。
+#
+# 本文件里已经存在的两个路径 —— POST /api/links 与 GET /{code} —— 是已发布的对外契约，
+# 自需求基线冻结（G1）之后对下游只读：请求结构、响应结构、既有响应码一个字段都不许改。
+# 本次需求只允许「纯新增」：新增路径、新增可选请求字段、新增响应码。
+# 任何看起来必须修改既有定义的改动，都要退回 G1 由需求提出人裁定，不得在实现阶段自行决定。
+openapi: 3.0.3
+info:
+  title: Shortlink Service API
+  version: 1.0.0
+  description: 把长网址变成短网址，访问短网址时 302 跳回原地址。
+servers:
+  - url: http://localhost:8081
+paths:
+  /api/links:
+    post:
+      operationId: createLink
+      summary: 创建一条短链
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLinkRequest'
+      responses:
+        '201':
+          description: 创建成功，Location 头指向短链地址
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateLinkResponse'
+        '400':
+          description: targetUrl 缺失、为空或不是合法 URL
+  /{code}:
+    get:
+      operationId: redirect
+      summary: 访问短码并 302 跳转到目标地址
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: Referer
+          in: header
+          required: false
+          description: >-
+            可选。浏览器在多种常见情况下都不会发送 Referer —— 直接粘贴链接、
+            严格的 Referrer-Policy、App 内置浏览器、https 页面跳 http 目标。
+            因此「不带 Referer」属于正常流量，不是异常输入，服务端不得据此拒绝请求。
+          schema:
+            type: string
+      responses:
+        '302':
+          description: 跳转到目标地址
+          headers:
+            Location:
+              schema:
+                type: string
+        '404':
+          description: 短码不存在
+components:
+  schemas:
+    CreateLinkRequest:
+      type: object
+      required:
+        - targetUrl
+      properties:
+        targetUrl:
+          type: string
+          description: 目标地址，必须是合法 URL
+          example: https://example.com/a/very/long/path
+    CreateLinkResponse:
+      type: object
+      required:
+        - code
+        - targetUrl
+        - shortUrl
+      properties:
+        code:
+          type: string
+          description: 8 位 base62 短码
+        targetUrl:
+          type: string
+        shortUrl:
+          type: string
