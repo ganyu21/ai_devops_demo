@@ -21,9 +21,8 @@ import org.springframework.test.web.servlet.MvcResult;
 /**
  * 对外契约的集成测试。
  *
- * <p>每一个跳转用例都<b>显式带上 Referer</b>。缺失 Referer 属于正常流量，
- * 而当前实现在这种情况下会 500 —— 那个缺陷由另一张工单负责，
- * 这里的用例不能替它把红变成绿。
+ * <p>每一个跳转用例都<b>显式带上 Referer</b>。不带 Referer 的那条路径归另一张工单负责，
+ * 本类不覆盖它——覆盖了就会把那张工单「修复前红、修复后绿」的对比证据提前消耗掉。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
