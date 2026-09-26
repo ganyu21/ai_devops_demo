@@ -104,31 +104,33 @@ PY
             archiveArtifacts artifacts: 'target/site/jacoco/**,target/surefire-reports/*.xml',
                     allowEmptyArchive: true
             script {
-                // 回写 GitHub commit status。
-                // 凭据只存在于 Jenkins 的 credential store 里（id: github-status-token），
-                // 数字员工既看不到它，也不需要它 —— 它只调用封装脚本读构建结论。
+                // 回写 GitHub commit status —— 这是 Jenkins 与 GitHub 之间唯一的桥。
+                //
+                // 演练环境用构建机上已登录的 gh，不在 Jenkins 里存任何凭据。
+                // 生产环境换成 Jenkins credential store 里的一张 fine-grained PAT
+                // （只给这个仓、只给 Contents:Read 与 commit status 写权限），
+                // 然后用 withCredentials([string(credentialsId: 'github-status-token', ...)])
+                // 把它作为 GH_TOKEN 环境变量交给同一条 gh 命令 —— 命令本身不用改。
+                //
+                // 回写失败只把构建标成 UNSTABLE，不改判门禁结论：
+                // 门禁红不红由 mvn 决定，桥断了是基础设施问题，不能让它伪装成代码问题。
                 catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
-                    withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
-                        def state = (currentBuild.currentResult == 'SUCCESS') ? 'success' : 'failure'
-                        def description = "mvn clean verify on ${env.BUILT_BRANCH}".toString()
-                        if (description.length() > 140) {
-                            description = description.substring(0, 140)
-                        }
-                        def payload = """{
-                          "state": "${state}",
-                          "target_url": "${env.BUILD_URL}",
-                          "description": "${description}",
-                          "context": "${env.STATUS_CONTEXT}"
-                        }"""
-                        def status = sh(returnStatus: true, script: """
-                            printf '%s' '${payload}' | curl -sS -o /dev/null -w '%{http_code}' \\
-                              -X POST \\
-                              -H 'Authorization: token \$GH_TOKEN' \\
-                              -H 'Accept: application/vnd.github+json' \\
-                              -d @- \\
-                              'https://api.github.com/repos/${env.REPO}/statuses/${env.BUILT_SHA}'
-                        """)
-                        echo "github status write-back http_code=${status} context=${env.STATUS_CONTEXT} sha=${env.BUILT_SHA}"
+                    def state = (currentBuild.currentResult == 'SUCCESS') ? 'success' : 'failure'
+                    def summary = "mvn -B clean verify on ${env.BUILT_BRANCH}".toString()
+                    withEnv(["GH_STATE=${state}",
+                             "GH_DESC=${summary}",
+                             "GH_SHA=${env.BUILT_SHA}",
+                             "GH_CTX=${env.STATUS_CONTEXT}",
+                             "GH_URL=${env.BUILD_URL}",
+                             "GH_REPO=${env.REPO}"]) {
+                        sh '''
+                            /opt/homebrew/bin/gh api -X POST "repos/$GH_REPO/statuses/$GH_SHA" \
+                              -f state="$GH_STATE" \
+                              -f context="$GH_CTX" \
+                              -f description="$GH_DESC" \
+                              -f target_url="$GH_URL" > /dev/null
+                            echo "github status write-back ok context=$GH_CTX sha=$GH_SHA state=$GH_STATE"
+                        '''
                     }
                 }
             }
