@@ -1,12 +1,17 @@
 # Qoder Action：PR 自动审查。
 #
-# 与 Jenkins 门禁的分工：
-#   Jenkins（job ai-devops-demo-verify）跑的是**机器门禁**——测试、覆盖率、静态检查、schema 迁移，
-#     结论回写成 commit status `jenkins/verify`，是分支规则集要求的必需状态检查。
+# 三层审查的分工：
+#   gate.yml（job mvn-verify）跑的是**机器门禁**——测试、覆盖率、静态检查、schema 迁移，
+#     check run 名 `mvn-verify` 就是分支规则集要求的必需状态检查。
 #   这条 workflow 跑的是**AI 代码审查**——读 diff 与仓库上下文，按 AGENTS.md 的审查重点给意见，
 #     结论以 PR review 的形式落在 PR 上，check 名是 job 名 `qoder-review`。
 #   两者都不替代人工准出门禁（G2）。三层各管一件事：机器管「跑不跑得通」，
 #   AI 管「有没有违背已写下来的纪律」，人管「这个风险接不接受」。
+#
+# ⚠ 实测：这个 Action 留下的是 **COMMENTED** 审查，不是 APPROVED。它会创建评审线程，
+#   而规则集开了 required_review_thread_resolution，所以这些线程不解决 PR 就合不进去。
+#   别指望它去满足「至少 1 名评审人批准」——它填不上那一项。逐条裁定（采纳/不采纳/要求返修）
+#   是 G2 上人的活，裁定完由人或有权限的角色把线程 resolve 掉。
 #
 # 审查规则写在仓库根的 AGENTS.md 里，Qoder CLI 会自动加载——规则跟着代码一起版本化，
 # 改规则要走 PR，这本身就是「把正确性写进指令」而不是「指望执行者自觉」。
