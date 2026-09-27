@@ -38,26 +38,35 @@ lab/
     └── check-public-hygiene.sh  公开仓卫生扫描：内部口径、内部单号、机器用户名、凭据字面量
 ```
 
-## ⚠️ 当前状态：仓内资产已领先于 daemon（刻意的，别当成不一致去"修"）
+## 仓内资产与运行态有没有分歧：怎么核，以及什么时候刻意让它分歧
 
-机器门禁跑在 GitHub Actions 上（`.github/workflows/gate.yml`，job `mvn-verify`），
-规则集要求的必需状态检查 context 就是 `mvn-verify`。本目录下的资产已全部是这个口径：
+**这一节原来写的是「当前状态：仓内资产已领先于 daemon」，并列了一张「三项待做」的表。
+那张表在写完的当天就过期了**——三步都做完之后，它仍然在说「尚未发布」「群上仍绑着旧版本」。
+这正好是本目录反复警告的那类错误：**已经写下来的状态断言会过期，而过期的状态断言看起来仍然像事实**，
+比没有断言更糟，因为下一个人会照着它去「修」一个已经修好的东西。
 
-- `sop/sop-body.md` 已构建为 **`github-lab-group-delivery@1.0.3`**（尚未发布）
-- `wakers/desc-*.txt` 五份都已改写（DevOps 那份整份重写）
+所以现在这一节只写**怎么核**，不写**核出来是什么**：
 
-**但两者都还没生效到运行态**，因为迁移发生时那一轮交付正在跑：
+```bash
+./lab/scripts/qw-up.sh status        # 第 4 节报描述与 fileGuard 的一致性，第 5 节报 SOP 绑定版本
+./lab/scripts/qw-group.sh sop        # 只看绑定：版本、releaseId、5 个角色参数解析到了谁
+lab/install.sh --check               # 只看描述与 fileGuard，逐份报「一致」或差几条
+```
 
-| 动作 | 状态 | 为什么先不做 |
-| --- | --- | --- |
-| `group sop set … @1.0.3` 重绑 | **待做** | 中途重绑会让正在跑的角色读到新旧两份正文，构成第二个事实源 |
-| `install.sh` 写入新描述 | **待做** | 同理：运行中的 Waker 下一轮会读到与开场时不同的角色边界 |
-| `install.sh` 合并 fileGuard 增量 | **待做** | 与前两项同批做。它只收紧权限（新增 2 条黑名单、摘除 3 条已退役 CI 的死条目），风险低于前两项 |
+三者都会把差异**显式**报出来，`qw-up.sh` 还会把它计入待处理项数并以非 0 退出。
+`qw-render.js` 的 `sop` mode 会把「仓内期望版本」（来自 `env.sh` 的 `LAB_SOP_VERSION`）
+与现网绑定版本并排显示，不一致就打 `⚠`；角色参数里若还有没解析的 `${{...}}` 字面量也会打 `⚠`。
 
-现网群上仍绑着 `@1.0.1`，`qw-up.sh` 与 `qw-group.sh sop` 都会把这条差异显式报出来。
-这一轮的过渡靠**群消息**传达（已发，含新 context、读结论的入口、以及「不要手动触发门禁」）。
+### 什么时候要刻意让两边分歧
 
-**等这一轮 P7 收尾后**按顺序补三步并复核：
+**在某一轮交付跑到一半时，不要重绑 SOP、不要重装角色描述。** 中途重绑会让正在跑的角色
+读到新旧两份正文，构成第二个事实源；重装描述会让同一个角色在这一轮里前后读到不同的边界。
+过渡期靠**群消息**传达口径变更（发一条，写清新 context、读结论的入口、以及哪些动作不要做）。
+
+这种分歧是**刻意的**，不是配置错误。但要满足两个条件才算安全：
+
+1. **它必须显式可见**——`qw-up.sh` 会把它报成待处理项，别去「修」它；
+2. **它必须有明确的收尾动作**——那一轮收尾后按顺序补三步并复核：
 
 ```bash
 lab/install.sh && lab/install.sh --check          # 描述 + fileGuard 装进 daemon，逐份核对「一致」
@@ -68,8 +77,8 @@ lab/install.sh && lab/install.sh --check          # 描述 + fileGuard 装进 da
 `smoke` 的第 3 问就是版本判据：答 `mvn-verify` 说明读到的是 Actions 口径的正文；
 答 `jenkins/verify` 说明群上还绑着旧版本。<!-- hygiene-allow: 版本判据必须写出旧 context 名，否则无法区分读到的是哪一版正文 -->
 
-`install.sh --check` 在这段过渡期会报「不一致」，`qw-up.sh` 会把它计入待处理项数——
-那是**真信号不是故障**：它如实反映了仓内资产已改、daemon 还没改。
+**最近一次核对的结果记在提交信息里，不记在这里**——记在这里就会过期。
+要想知道现在是什么状态，跑上面那三条命令。
 
 ## 凭据模型
 
@@ -219,7 +228,7 @@ NEUTRAL / STARTUP_FAILURE` 会掉进缝里被静默当成没问题；而 `rollup
 ## 两个环境的坑（都是实测踩到的）
 
 - **Waker 会话起不来，报 `qodercli version is incompatible with the bundled SDK (expected 1.1.48, received 1.1.64)`**：托管的 `qodercli-wake` 被热更新推到了 daemon 里 SDK 期望的版本之前。`qoderwake update --check` 会说「已是最新」，因为 daemon 本身确实是最新的——错配在运行时那一侧。**`qoderwake restart` 让两侧重新对齐即可**，重启后同一条消息的 run 从 `failed` 变成 `completed`。排查这类「消息发出去了但没人回」的问题，先看 `qoderwake runs list <convId>`，那里有 run 状态和错误原因；只看消息列表会以为是路由没通。
-- **读群消息**：`qoderwake messages list <convId> --limit N --json` 返回的是**顶层数组**（不是 `{data:{messages:[]}}`），按 seq 升序，正文字段是 `body.text`，发送者是 `senderParticipantId`（要对 `group show` 里的 participant id 才能翻成名字）。`--limit` 超过服务端上限（实测 200 可用、500 不行）会**静默返回空且退出码是 0**，表现为「一条消息都没有」。`messages claim` 只能在一个活跃的 Conversation Run 内部调用，从外面调会报 `this command can only run inside an active QoderWake Conversation Run`——别拿它当读消息的入口。
+- **读群消息**：`qoderwake messages list <convId> --limit N --json` 返回的是**顶层数组**（不是 `{data:{messages:[]}}`），按 seq 升序，正文字段是 `body.text`，发送者是 `senderParticipantId`（要对 `group show` 里的 participant id 才能翻成名字）。`--limit` **一律用 200，不要调高**：上一代环境上实测过「limit 调到 500 会静默返回空且退出码是 0」（表现为「一条消息都没有」，看起来像群里没人说话），而**本环境未能复现**——在 74 条消息的群上，200 / 500 / 1000 都返回全部 74 条。所以这条不是「已知上限在哪」，而是「调高没有任何收益，而一旦撞上静默空返回，故障现象极具误导性」。`messages claim` 只能在一个活跃的 Conversation Run 内部调用，从外面调会报 `this command can only run inside an active QoderWake Conversation Run`——别拿它当读消息的入口。
 
 ## 共享工作树：这个事故真发生过
 
