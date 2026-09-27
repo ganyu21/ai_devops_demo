@@ -3,10 +3,13 @@
   "title": "解析缓存加容量上限与 TTL；访问流水落库并提供统计查询接口",
   "relatedIssues": [3],
   "requirementOwner": "human/owner",
-  "currentPhase": "P6_ACCEPTED",
+  "currentPhase": "P7_S6_MERGE_BLOCKED",
   "baselineVersion": "v1.1",
   "baselineBranch": "feature/issue-2-cache-ttl-and-visit-log",
   "mergeCommit": "671cca8",
+  "prNumber": 17,
+  "prUrl": "https://github.com/ganyu21/ai_devops_demo/pull/17",
+  "finalSha": "c066ad92af03ed5f048764ff2ec1f9c51fc44e85",
   "gateDecisions": [
     {
       "gate": "G1",
@@ -21,8 +24,22 @@
       ]
     }
   ],
-  "blockedBy": null,
-  "nextAction": "进入 P7 PR 创建与 G2 人工门禁；需 DevOps-Waker 对最终 SHA 重跑 jenkins/verify",
+  "blockedBy": {
+    "stage": "P7",
+    "state": "S6_MERGE_BLOCKED",
+    "blockedAtSha": "c066ad92af03ed5f048764ff2ec1f9c51fc44e85",
+    "reasons": [
+      {
+        "source": "github-lab.sh pr-status 17",
+        "detail": "{\"checks\":[{\"context\":\"mvn-verify\",\"state\":\"\"},{\"context\":\"qoder-review\",\"state\":\"\"}],\"mergeStateStatus\":\"BLOCKED\",\"mergeable\":\"MERGEABLE\",\"number\":17,\"reviewDecision\":\"\"}",
+        "mergeStateStatus": "BLOCKED",
+        "missingContexts": ["mvn-verify"],
+        "unresolvedReviewThreads": false
+      }
+    ],
+    "unblockPath": "由 DevOps-Waker 对最终 SHA c066ad92af03ed5f048764ff2ec1f9c51fc44e85 重跑 jenkins-lab.sh build feature/issue-2-cache-ttl-and-visit-log，等待 mvn-verify 与 qoder-review 状态回写成功后进入 G2"
+  },
+  "nextAction": "DevOps-Waker 对最终 SHA 重跑 jenkins/verify；状态回写成功后 Lead-Waker 主持 G2 人工门禁",
   "createdAt": "2026-09-27T08:25:00Z",
-  "updatedAt": "2026-09-27T11:24:12Z"
+  "updatedAt": "2026-09-27T11:36:38Z"
 }
