@@ -2,6 +2,7 @@ package com.lab.shortlink.visit;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import jakarta.annotation.PreDestroy;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
@@ -10,8 +11,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -19,11 +18,10 @@ import org.springframework.stereotype.Service;
  * 访问流水。
  *
  * <p>把访问流水持久化到 H2 数据库，并提供按短码查询最近访问的能力。
+ * 缺失 Referer 时保存 {@code null}，否则按 {@link Locale#ROOT} 归一化为小写。
  */
 @Service
 public class VisitLogService {
-
-    private static final Logger LOG = LoggerFactory.getLogger(VisitLogService.class);
 
     private final JdbcTemplate jdbc;
 
@@ -40,13 +38,12 @@ public class VisitLogService {
     /**
      * 同步记录一次访问。
      *
-     * <p>对 referer 的处理与基线逐字一致：直接调用 {@code toLowerCase(Locale.ROOT)}，
-     * 不添加空值保护。缺失 Referer 时的 500 缺陷由 issue #3 独立热修处理。
+     * <p>当 referer 缺失时保存 {@code null}；存在时按 {@link Locale#ROOT} 转小写后落库。
      */
     public void record(String code, String referer) {
-        String normalized = referer.toLowerCase(Locale.ROOT);
+        String normalized = referer == null ? null : referer.toLowerCase(Locale.ROOT);
         jdbc.update("INSERT INTO visit_log (code, referer, visited_at) VALUES (?, ?, ?)",
-                code, normalized, java.sql.Timestamp.from(Instant.now()));
+                code, normalized, Timestamp.from(Instant.now()));
     }
 
     /**
@@ -67,6 +64,18 @@ public class VisitLogService {
                         rs.getString("referer"),
                         rs.getTimestamp("visited_at").toInstant()),
                 code, limit));
+    }
+
+    /**
+     * 返回全部访问流水的快照，按 visited_at 倒序排列。
+     */
+    public List<VisitRecord> snapshot() {
+        return List.copyOf(jdbc.query(
+                "SELECT code, referer, visited_at FROM visit_log ORDER BY visited_at DESC",
+                (rs, rowNum) -> new VisitRecord(
+                        rs.getString("code"),
+                        rs.getString("referer"),
+                        rs.getTimestamp("visited_at").toInstant())));
     }
 
     public int size() {
