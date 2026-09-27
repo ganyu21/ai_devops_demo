@@ -174,7 +174,19 @@ process.stdin.on("end", () => {
   for (const x of arr) {
     const who = names[x.senderParticipantId] || x.senderParticipantId || "?";
     const body = x.body || {};
-    const text = String(body.text || body.type || "").replace(/\s+/g, " ");
+    let text = String(body.text || "").replace(/\s+/g, " ");
+    // 用 --file 发的消息，正文进的是 attachments（kind=input_file），body.text 是空的。
+    // 不显式标出来的话，这一行会退化成 body.type 也就是一个 "text"，
+    // 读的人以为消息是空的——而它恰恰是最长最重要的那条。
+    const atts = Array.isArray(x.attachments) ? x.attachments : [];
+    if (atts.length) {
+      const desc = atts.map((a) => {
+        const f = (a && a.attachment) || {};
+        return `${f.filename || "?"}(${f.sizeBytes != null ? f.sizeBytes + "B" : "?"})`;
+      }).join(", ");
+      text = (text ? text + " " : "") + `[附件 ${atts.length} 个: ${desc} —— 正文不在 body.text 里，用 qw-api.sh 取附件]`;
+    }
+    if (!text) text = String(body.type || "");
     const att = x.audience && x.audience.length ? ` →@${x.audience.map((a) => names[a.participantId] || a.participantId).join(",")}` : "";
     const t = String(x.createdAt || "").slice(11, 19);
     process.stdout.write(`[seq ${x.seq} ${t}] ${who}${att} (${x.intent || "?"}/${x.deliveryPolicy || "?"}): ${text}\n`);

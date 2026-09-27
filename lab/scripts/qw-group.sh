@@ -63,10 +63,15 @@ send() {
   for m in "$@"; do args+=(--mention "$m"); done
   # 一个都不 @ 时必须显式声明，否则 CLI 会拒绝
   [ ${#args[@]} -eq 0 ] && args=(--not-mention --yes)
-  # 长内容走 --file：--text 里带以 # 开头的多行正文会命中一条 shell 写法守卫，
-  # 卡进 5 分钟人工审批，而审批只存内存、超时即失败且无法补批——
-  # 后果是回复已经写好了却发不出去，看起来像那个角色没响应。
-  if [ "${#text}" -gt 400 ] || printf '%s' "$text" | grep -q '^#'; then
+  # 默认走 --text。**不要**把 SOP 里那条「长内容走 --file」的纪律照搬到这里：
+  #   1. 那条纪律是给 Waker 的——它构造 shell 命令时，引号内换行且下一行以 # 起始会命中
+  #      一条写法守卫、卡进 5 分钟人工审批。而本脚本是把 "$text" 作为**单个 argv 元素**
+  #      直接交给 CLI，不经 shell 解析，换行与 # 都无害，操作员这边也没有 toolGuard。
+  #   2. --file 的代价是实测到的：内容变成 attachments 里的 input_file，body.text 留空，
+  #      于是 messages list / tail / watch 全都读不到正文——群里最长、最重要的那条消息
+  #      在操作员视角变成一片空白。收信方读得到（它去取附件），发信方自己读不回来。
+  # 只有真的逼近 argv 长度上限时才退回 --file，那时 qw-render.js 至少会把附件名与字节数显示出来。
+  if [ "${#text}" -gt 8000 ]; then
     local f; f=$(mktemp -t qwmsg.XXXXXX) || die "无法创建临时文件"
     chmod 600 "$f"; printf '%s' "$text" > "$f"
     timeout 120 "$QW" messages send "$CONV" --file "$f" --intent request_action "${args[@]}" 2>&1 | head -20
