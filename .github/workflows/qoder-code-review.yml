@@ -1,0 +1,53 @@
+# Qoder Action：PR 自动审查。
+#
+# 与 Jenkins 门禁的分工：
+#   Jenkins（job ai-devops-demo-verify）跑的是**机器门禁**——测试、覆盖率、静态检查、schema 迁移，
+#     结论回写成 commit status `jenkins/verify`，是分支规则集要求的必需状态检查。
+#   这条 workflow 跑的是**AI 代码审查**——读 diff 与仓库上下文，按 AGENTS.md 的审查重点给意见，
+#     结论以 PR review 的形式落在 PR 上，check 名是 job 名 `qoder-review`。
+#   两者都不替代人工准出门禁（G2）。三层各管一件事：机器管「跑不跑得通」，
+#   AI 管「有没有违背已写下来的纪律」，人管「这个风险接不接受」。
+#
+# 审查规则写在仓库根的 AGENTS.md 里，Qoder CLI 会自动加载——规则跟着代码一起版本化，
+# 改规则要走 PR，这本身就是「把正确性写进指令」而不是「指望执行者自觉」。
+#
+# 一个刻意的权限设计：修改 .github/workflows/ 下的文件需要 Workflows 权限，
+# 而数字员工那张 fine-grained PAT 只有 Contents / Pull requests / Issues，没有 Workflows。
+# 所以它改不了自己的审查关卡，也改不了 CI 定义——需要更高权限才能完成的动作，
+# 本来就不该由数字员工完成。
+#
+# 前置条件（人工一次性完成）：
+#   1. 在 Qoder Integrations 里把 Qoder 账户与 GitHub 账户关联，并把 qoderai GitHub App 装到本仓
+#   2. 生成 Qoder 个人访问令牌，存进本仓 Settings > Secrets and variables > Actions，
+#      secret 名必须是 QODERCN_PERSONAL_ACCESS_TOKEN
+# 令牌没配好时这条 workflow 会失败；它目前**不是**规则集里的必需状态检查，
+# 所以失败不会挡住合并。要升级成必需检查，先在 PR 上确认它稳定通过。
+
+name: Qoder Auto Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  qoder-review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Qoder Code Review
+        uses: QoderAI/qoder-action@v0
+        with:
+          qoder_personal_access_token: ${{ secrets.QODERCN_PERSONAL_ACCESS_TOKEN }}
+          prompt: |
+            /review-pr
+            REPO:${{ github.repository }} PR_NUMBER:${{ github.event.pull_request.number }}
+            OUTPUT_LANGUAGE: Chinese

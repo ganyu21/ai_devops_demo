@@ -1,0 +1,74 @@
+# Qoder Action：@qoder 交互式协作。
+#
+# 在 issue 或 PR 的评论里 @qoder，就能让它解释代码、给实现建议、或直接改。
+# 在本仓的用法主要是需求澄清阶段：issue 里的 Open Question 往往要读代码才能回答，
+# 与其让人去翻，不如在评论里问一句「@qoder 这个缓存现在有没有容量上限？在哪一行？」，
+# 让回答带着代码位置回来，再据此裁定。
+#
+# 边界要说清楚：它给的是**建议与解释**，不是裁定。裁定权在 Requirement Owner 手上，
+# 裁定结果要写进需求基线（.devflow/issue-<n>/01-requirement/change-breakdown.md）才算数。
+# 让 AI 的回答直接变成需求，等于把「谁对需求负责」这件事悄悄转移掉了。
+#
+# 前置条件与 qoder-code-review.yml 相同：装 qoderai GitHub App + 配 QODERCN_PERSONAL_ACCESS_TOKEN。
+
+name: Qoder Assistant
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+jobs:
+  qoder-assistant:
+    # 只在真的 @ 了 qoder、且不是机器人自己发的评论时触发，避免互相唤醒成回环。
+    if: |
+      contains(github.event.comment.body, '@qoder') &&
+      !endsWith(github.event.comment.user.login, '[bot]')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build Arguments
+        id: build_args
+        run: |
+          ARGS="REPO: ${{ github.repository }}
+          REQUEST_SOURCE: ${{ github.event_name }}
+          THREAD_ID: ${{ github.event.comment.node_id }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+          AUTHOR: ${{ github.event.comment.user.login }}
+          BODY: ${{ github.event.comment.body }}
+          URL: ${{ github.event.comment.html_url }}
+          IS_PR: ${{ github.event.issue.pull_request != null || github.event_name == 'pull_request_review_comment' }}
+          ISSUE_OR_PR_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}"
+
+          if [ -n "${{ github.event.comment.pull_request_review_id }}" ]; then
+            ARGS="$ARGS
+          REVIEW_ID: ${{ github.event.comment.pull_request_review_id }}"
+          fi
+
+          if [ -n "${{ github.event.comment.in_reply_to_id }}" ]; then
+            ARGS="$ARGS
+          REPLY_TO_COMMENT_ID: ${{ github.event.comment.in_reply_to_id }}"
+          fi
+
+          echo "args<<EOF" >> $GITHUB_OUTPUT
+          echo "$ARGS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Run Qoder Assistant
+        uses: QoderAI/qoder-action@v0
+        with:
+          qoder_personal_access_token: ${{ secrets.QODERCN_PERSONAL_ACCESS_TOKEN }}
+          prompt: |
+            /assistant
+            ${{ steps.build_args.outputs.args }}
