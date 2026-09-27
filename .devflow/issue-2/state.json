@@ -1,0 +1,12 @@
+{
+  "issue": 2,
+  "title": "解析缓存加容量上限与 TTL；访问流水落库并提供统计查询接口",
+  "relatedIssues": [3],
+  "requirementOwner": "human/owner",
+  "currentPhase": "P1_G1_PENDING",
+  "baselineBranch": "feature/issue-2-cache-ttl-and-visit-log",
+  "gateDecisions": [],
+  "blockedBy": "等待 Requirement Owner 对 10 条 Open Question 与 2 条 Conflict 给出带内容的裁定",
+  "createdAt": "2026-09-27T08:25:00Z",
+  "updatedAt": "2026-09-27T08:25:00Z"
+}
