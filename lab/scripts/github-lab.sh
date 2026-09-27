@@ -21,7 +21,7 @@
 #   github-lab.sh issue-comment <n> <file>         用文件内容发评论（避开引号换行守卫）
 #   github-lab.sh pr-create <branch> <tf> <bf>     开 PR（标题与正文都走文件）
 #   github-lab.sh pr-status <n>                    合并资格 + 每个必需状态检查
-#   github-lab.sh commit-status <sha>              该 SHA 上的全部 context 与 state
+#   github-lab.sh commit-status <sha>              该 SHA 上的 commit status 与 check run（两个都查）
 #   github-lab.sh ruleset                          main 的规则集（治理控制现状）
 #   github-lab.sh push <branch>                    推分支（用 PAT，不用机器上的仓主凭据）
 #   github-lab.sh fetch                            取远端引用
@@ -40,8 +40,10 @@ if [ ! -f "$TOKEN_FILE" ]; then
   echo '{"error":"NO_TOKEN","detail":"PAT 文件不存在，用 GITHUB_WAKER_TOKEN_FILE 指定或先装好凭据"}'
   exit 2
 fi
-if [ ! -d "$REPO_ROOT/.git" ]; then
-  echo "{\"error\":\"NO_REPO\",\"detail\":\"$REPO_ROOT 不是 git 仓库，用 LAB_REPO 指定\"}"
+# 用 rev-parse 判，不要用 [ -d .git ]：linked worktree 里的 .git 是**文件**不是目录，
+# 按目录判会在 worktree 里恒失败，报一个看起来像路径写错的 NO_REPO。
+if ! git -C "$REPO_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+  echo "{\"error\":\"NO_REPO\",\"detail\":\"$REPO_ROOT 不是 git 仓库或 worktree，用 LAB_REPO 指定\"}"
   exit 2
 fi
 
@@ -82,9 +84,15 @@ case "$cmd" in
       --jq '{number,mergeable,mergeStateStatus,reviewDecision,checks:[.statusCheckRollup[]?|{context:(.context//.name),state:(.state//.conclusion)}]}'
     ;;
 
-  commit-status)
+  commit-status|checks)
     sha="${1:?commit sha}"
-    api "repos/$REPO/commits/$sha/statuses" --jq '[.[]|{context,state,description,created_at}]'
+    # 两个端点都要查：Jenkins 那条回写桥产生的是 legacy commit status，
+    # 而 GitHub Actions 产生的是 check run。只查 statuses 会看不见 Actions 的结论，
+    # 然后误判成「回写没成功」并报一个假阻塞——这是迁移到 Actions 时最容易踩的一脚。
+    api "repos/$REPO/commits/$sha/statuses" \
+      --jq '{statuses:[.[]|{context,state,description}]}'
+    api "repos/$REPO/commits/$sha/check-runs" \
+      --jq '{checkRuns:[.check_runs[]|{name,status,conclusion}]}'
     ;;
 
   ruleset)
