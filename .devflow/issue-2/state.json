@@ -26,7 +26,7 @@
   "blockedBy": {
     "stage": "P7",
     "state": "S6_MERGE_BLOCKED",
-    "blockedAtSha": "af23d20f207cdfaf73a864608de960278484fec9",
+    "blockedAtSha": "6e20a0092f37e02fb0bdcce459e4c85d7a996173",
     "reasons": [
       {
         "source": "github-lab.sh pr-status 17",
@@ -40,5 +40,5 @@
   },
   "nextAction": "DevOps-Waker 对最终 SHA 重跑 jenkins/verify；状态回写成功后 Lead-Waker 主持 G2 人工门禁",
   "createdAt": "2026-09-27T08:25:00Z",
-  "updatedAt": "2026-09-27T11:37:29Z"
+  "updatedAt": "2026-09-27T11:40:15Z"
 }
