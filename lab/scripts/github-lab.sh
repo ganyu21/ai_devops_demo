@@ -122,9 +122,30 @@ case "$cmd" in
       .data.repository as $r | $r.pullRequest as $pr
       | ($pr.reviewThreads.nodes // []) as $th
       | ([ $th[] | select(.isResolved==false) ]) as $unres
-      | ([ $pr.statusCheckRollup.contexts.nodes[]? | {context:(.context // .name), state:(.state // .conclusion)} ]) as $checks
-      | ([ $checks[] | select(.state=="FAILURE" or .state=="ERROR" or .state=="TIMED_OUT" or .state=="ACTION_REQUIRED") | .context ]) as $badchecks
-      | ([ $checks[] | select(.state=="PENDING" or .state=="QUEUED" or .state=="IN_PROGRESS" or .state=="" or .state==null) | .context ]) as $noresult
+      # CheckRun 与 StatusContext 用的是两套词表（conclusion: SUCCESS/FAILURE/CANCELLED/SKIPPED/…
+      # 对 state: SUCCESS/FAILURE/PENDING/EXPECTED），所以每条都带上 kind 说明它来自哪一套，
+      # 并把两者归一到同一个 verdict 上再分类。
+      #
+      # 分类必须**穷尽**：原先只列了「坏」与「还没结论」两档，于是 CANCELLED / SKIPPED /
+      # STALE / NEUTRAL / STARTUP_FAILURE 会掉进缝里被当成「没问题」静默放行。
+      # 一条必需检查报 SKIPPED 意味着它根本没跑，规则集不会因此满足——静默放行比标错更糟。
+      | ([ $pr.statusCheckRollup.contexts.nodes[]?
+           | (if .name then "checkRun" else "statusContext" end) as $kind
+           | (.context // .name) as $ctx
+           | (.conclusion // .state // null) as $raw
+           | ($raw // (if $kind=="checkRun" then (.status // "") else "" end)) as $v
+           | { context: $ctx, kind: $kind, state: $raw, runStatus: (.status // null),
+               verdict: (
+                 if $v=="SUCCESS" or $v=="EXPECTED" then "pass"
+                 elif $v=="FAILURE" or $v=="ERROR" or $v=="TIMED_OUT" or $v=="ACTION_REQUIRED"
+                      or $v=="CANCELLED" or $v=="STARTUP_FAILURE" then "fail"
+                 elif $v=="PENDING" or $v=="QUEUED" or $v=="IN_PROGRESS" or $v=="WAITING"
+                      or $v=="" or $v==null then "pending"
+                 elif $v=="SKIPPED" or $v=="STALE" or $v=="NEUTRAL" then "notrun"
+                 else "unknown" end) } ]) as $checks
+      | ([ $checks[] | select(.verdict=="fail") | "\(.context)=\(.state // .runStatus)" ]) as $badchecks
+      | ([ $checks[] | select(.verdict=="pending") | .context ]) as $noresult
+      | ([ $checks[] | select(.verdict=="notrun" or .verdict=="unknown") | "\(.context)=\(.state // .runStatus // "?")" ]) as $notrun
       | ([ $pr.reviews.nodes[]? | select(.state=="APPROVED") | .author.login ]) as $approvals
       | {
           number: $pr.number,
@@ -148,6 +169,7 @@ case "$cmd" in
             (if ($unres|length) > 0 then ["required_review_thread_resolution: \($unres|length) 条评审线程未解决"] else [] end)
             + (if ($badchecks|length) > 0 then ["必需状态检查未过: \($badchecks|join(", "))"] else [] end)
             + (if ($noresult|length) > 0 then ["状态检查尚无结论: \($noresult|join(", "))"] else [] end)
+            + (if ($notrun|length) > 0 then ["状态检查没有给出可用结论（SKIPPED/STALE/NEUTRAL 或本脚本不认得的值）: \($notrun|join(", "))——必需检查报这些值时规则集不会被满足，要人工核对"] else [] end)
           ),
           # 「没有任何 APPROVED 审查」不放进 blockingReasons：它是不是阻塞取决于规则集里的
           # required_approving_review_count，而那张 PAT 没有 Administration 权限、读不到这个值。
