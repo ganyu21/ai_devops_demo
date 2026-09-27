@@ -124,6 +124,16 @@ lab_daemon_up() {
 lab_worktrees() {
   local root; root="$(git -C "$LAB_ROOT/.." rev-parse --show-toplevel 2>/dev/null)"
   [ -n "$root" ] || { echo "  （当前目录不在靶仓的 git 工作树里，跳过）"; return 0; }
+  # 先 fetch 再比较。领先/落后是拿本地缓存的 refs/remotes/origin/* 算的，而那份缓存
+  # 只在有人显式 fetch 或 push 时才更新——实测它把已经推上去的 5 个提交报成
+  # 「⚠ 领先 origin，有未推送的工作」。这一节的整个用途就是「动手前先确认没人占着、
+  # 没有未推送的半成品」，报一个自信的假警报比不报更糟：要么把人挡在正当操作之外，
+  # 要么教会人忽略这条警告。fetch 失败（离线）时如实说明比较基准可能陈旧，不装作准确。
+  if git -C "$root" fetch origin --quiet 2>/dev/null; then
+    :
+  else
+    echo "  !  fetch 失败（离线？），下面的领先/落后是拿本地缓存的 origin 引用算的，可能陈旧"
+  fi
   # 除了「谁占着哪个分支」，还要报**它相对远端是领先还是落后**：
   # 领先意味着有 Waker 的提交还没推上去，此时操作员从那个分支切新分支就会把半成品带走；
   # 落后只是 checkout 陈旧，无害。两者的处置完全不同，光看 worktree list 分不出来。

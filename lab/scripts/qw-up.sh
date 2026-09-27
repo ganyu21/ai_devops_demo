@@ -81,7 +81,16 @@ if [ -f "$GITHUB_WAKER_TOKEN_FILE" ]; then
     [ "$dperm" = "700" ] || warn "token 所在目录权限是 ${dperm}，应为 700"
   fi
   # 值绝不能进 git。这条检查很便宜，而一旦漏了就是公开仓里的一次凭据泄漏。
-  if git -C "$REPO" grep -qIl -e "$(head -c 20 "$GITHUB_WAKER_TOKEN_FILE" 2>/dev/null)" 2>/dev/null; then
+  #
+  # 但前缀取不到时**必须放弃核对，不能继续 grep**：git grep -e "" 会匹配每一个文件、
+  # 退出码 0，于是这条检查会反过来断言「token 前缀出现在仓库内容里、立即轮换该令牌」——
+  # 一次读文件失败（EDR 按访问扫描挡住、权限被改、文件正被重写）就会把人支去轮换一张
+  # 好好的凭据，顺带让这条检查从此不被信任。空 pattern 把检查的含义整个反转，
+  # 这与「本该防静默放行的检查自己静默放行」是同一族错误。
+  prefix="$(head -c 20 "$GITHUB_WAKER_TOKEN_FILE" 2>/dev/null)"
+  if [ "${#prefix}" -lt 16 ]; then
+    warn "取不到足够长的 token 前缀（拿到 ${#prefix} 字），**跳过**「值是否进了 git」的核对——这不代表通过。手工核对：git grep -c 该令牌前 20 字"
+  elif git -C "$REPO" grep -qIl -e "$prefix" 2>/dev/null; then
     bad "token 前缀出现在仓库内容里 —— 立即轮换该令牌并从历史中处置"
   else
     echo "  ok  token 前缀未出现在仓库任何被跟踪文件里"
