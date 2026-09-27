@@ -95,15 +95,16 @@ case "$cmd" in
     branch="${1:?分支名}"
     [ -x "$ASKPASS" ] || { echo '{"error":"NO_ASKPASS","detail":"gh-askpass.sh 不存在或不可执行"}'; exit 2; }
     # credential.helper= 置空是关键：不清掉就会用机器上那张有 admin 权限的仓主凭据。
-    git -C "$REPO_ROOT" -c credential.helper= \
-      env GIT_TERMINAL_PROMPT=0 GIT_ASKPASS="$ASKPASS" \
+    # 环境变量必须写在 git **前面**：写在后面会被当成 git 的子命令（'env' is not a git command）。
+    GIT_TERMINAL_PROMPT=0 GIT_ASKPASS="$ASKPASS" \
+      git -C "$REPO_ROOT" -c credential.helper= \
       push "https://github.com/$REPO.git" "refs/heads/$branch:refs/heads/$branch" 2>&1
     ;;
 
   fetch)
     [ -x "$ASKPASS" ] || { echo '{"error":"NO_ASKPASS","detail":"gh-askpass.sh 不存在或不可执行"}'; exit 2; }
-    git -C "$REPO_ROOT" -c credential.helper= \
-      env GIT_TERMINAL_PROMPT=0 GIT_ASKPASS="$ASKPASS" \
+    GIT_TERMINAL_PROMPT=0 GIT_ASKPASS="$ASKPASS" \
+      git -C "$REPO_ROOT" -c credential.helper= \
       fetch "https://github.com/$REPO.git" '+refs/heads/*:refs/remotes/origin/*' 2>&1
     ;;
 
