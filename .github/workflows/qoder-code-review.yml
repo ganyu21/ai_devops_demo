@@ -17,9 +17,12 @@
 # 本来就不该由数字员工完成。
 #
 # 前置条件（人工一次性完成）：
-#   1. 在 Qoder Integrations 里把 Qoder 账户与 GitHub 账户关联，并把 qoderai GitHub App 装到本仓
-#   2. 生成 Qoder 个人访问令牌，存进本仓 Settings > Secrets and variables > Actions，
-#      secret 名必须是 QODERCN_PERSONAL_ACCESS_TOKEN
+#   1. 打开 https://qoder.com/account/integrations ，把 Qoder 账户与 GitHub 关联，
+#      并把 qoderai GitHub App 装到本仓（安装范围选 Only select repositories）
+#   2. 同一页生成 Qoder Personal Access Token，存进本仓 Settings > Secrets and variables
+#      > Actions，secret 名必须是 QODER_PERSONAL_ACCESS_TOKEN（国际版口径；CN 版是
+#      QODERCN_PERSONAL_ACCESS_TOKEN，两者不通用）
+#   本机装了 qodercli 的话，也可以在 TUI 里跑 /setup-github，它会带着走完这套配置
 # 令牌没配好时这条 workflow 会失败；它目前**不是**规则集里的必需状态检查，
 # 所以失败不会挡住合并。要升级成必需检查，先在 PR 上确认它稳定通过。
 
@@ -46,7 +49,7 @@ jobs:
       - name: Run Qoder Code Review
         uses: QoderAI/qoder-action@v0
         with:
-          qoder_personal_access_token: ${{ secrets.QODERCN_PERSONAL_ACCESS_TOKEN }}
+          qoder_personal_access_token: ${{ secrets.QODER_PERSONAL_ACCESS_TOKEN }}
           prompt: |
             /review-pr
             REPO:${{ github.repository }} PR_NUMBER:${{ github.event.pull_request.number }}
