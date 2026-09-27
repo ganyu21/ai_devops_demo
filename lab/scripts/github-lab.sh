@@ -148,8 +148,18 @@ case "$cmd" in
             (if ($unres|length) > 0 then ["required_review_thread_resolution: \($unres|length) 条评审线程未解决"] else [] end)
             + (if ($badchecks|length) > 0 then ["必需状态检查未过: \($badchecks|join(", "))"] else [] end)
             + (if ($noresult|length) > 0 then ["状态检查尚无结论: \($noresult|join(", "))"] else [] end)
-            + (if ($approvals|length) == 0 then
-                 ["没有任何 APPROVED 审查（reviewDecision=\($pr.reviewDecision // "空")）。规则集若要求有效审查，这一项就是阻塞原因"] else [] end)
+          ),
+          # 「没有任何 APPROVED 审查」不放进 blockingReasons：它是不是阻塞取决于规则集里的
+          # required_approving_review_count，而那张 PAT 没有 Administration 权限、读不到这个值。
+          # 实测证据：PR #19 在 0 条审查、0 条未解决线程时 mergeStateStatus 是 UNSTABLE 而不是
+          # BLOCKED，说明该值为 0 时缺审查并不阻塞。把它断言成阻塞原因，就等于重犯首轮那个错——
+          # 用一个读不到的规则去解释 BLOCKED。所以单列一项，并写清它成立的前提。
+          possibleAdditionalBlockers: (
+            if ($approvals|length) == 0 then
+              ["没有任何 APPROVED 审查（reviewDecision=\($pr.reviewDecision // "空")）。"
+               + "仅当规则集要求 required_approving_review_count ≥ 1 时这一项才是阻塞原因；"
+               + "该值需要 Administration 权限才能读到，本脚本读不到，请用 ruleset 子命令或 PR 页面核对"]
+            else [] end
           ),
           note: "blockingReasons 由本脚本从 GraphQL 实况推导，不要用自己的印象覆盖它。若它为空而 mergeStateStatus 仍是 BLOCKED，说明还有一条本脚本没覆盖的规则（例如 require_extra_approval_for_unattributed_changes）——此时如实报告「原因未定位，需人工在 PR 页面核对」，不要猜。"
         }'

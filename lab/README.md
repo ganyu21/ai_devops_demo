@@ -130,34 +130,47 @@ lab/install.sh                   # 写角色描述 + 合并 fileGuard 黑名单 
 有意保留的提及（版本判据、迁移说明、守卫自己的规则表）用同行标记放行，
 **不要**把文件加进 `check-public-hygiene.sh` 的 `SELF_EXCLUDE`——那份名单只该有规则表本身。
 
-## 合并资格：一个实测教训
+## 合并资格：一个实测教训，和一次判定实验
 
 `mergeStateStatus: BLOCKED` **不告诉你为什么**。首轮交付卡在 P7，PR #17 的两个必需检查
 （`mvn-verify`、`qoder-review`）都是 SUCCESS，`mergeable: MERGEABLE`，而 `mergeStateStatus: BLOCKED`。
 团队据此在群里报「唯一阻塞是 reviewDecision 为空（qoderai 仅 COMMENTED）」，
 并在 `state.json` 里写下 `"unresolvedReviewThreads": false`。
 
-**可直接核实的事实**（`gh api repos/…/rulesets/24042720` 与 GraphQL）：
-
-- `required_approving_review_count` = **0**，所以「需要至少 1 名评审人批准」这条规则当时并没有生效；
-- `required_review_thread_resolution` = **true**，而 PR #17 上有 **7 条 qoderai 留下的评审线程，`isResolved` 全是 false**。
-
-也就是说 `state.json` 里那个 `false` 与实况不符。根因在工具而不在角色：
-当时的 `github-lab.sh pr-status` 只返回 `mergeable / mergeStateStatus / reviewDecision / statusCheckRollup`，
-**根本不包含评审线程**（`gh pr view --json` 也没有 `reviewThreads` 这个字段，实测报 Unknown JSON field），
+**那个 `false` 与实况不符**：PR #17 上有 **7 条 qoderai 留下的评审线程，`isResolved` 全是 false**。
+根因在工具而不在角色：当时的 `github-lab.sh pr-status` 只返回
+`mergeable / mergeStateStatus / reviewDecision / statusCheckRollup`，**根本不包含评审线程**
+（`gh pr view --json` 也没有 `reviewThreads` 这个字段，实测报 Unknown JSON field），
 所以调用方无法从工具输出里得知那 7 条线程的存在，只能凭 `reviewDecision` 为空去推原因。
 
-**尚未判定**：真正卡住的是「7 条未解决线程」，还是规则集里另一条
-`require_extra_approval_for_unattributed_changes: true`（含义未实测）。两者在 #17 上同时成立，
-分不开。判定实验只需要一步：把 7 条线程逐条裁定并 resolve，再看 `mergeStateStatus` 是否转 `CLEAN`——
-转了就是线程，没转就是那条 approval 规则。**这一步属于 G2 上人的活，脚本不代做。**
+### 判定实验（2026-09-27，PR #19）
+
+哪一条规则真的在阻塞，本来分不开：#17 上「7 条未解决线程」与「没有任何 APPROVED 审查」同时成立。
+开 #19 时顺带做了一次对照，把它分开了：
+
+| 时刻 | 未解决线程 | APPROVED 审查 | 必需检查 | `mergeStateStatus` |
+| --- | --- | --- | --- | --- |
+| #19 刚开、AI 审查还没落 | 0 | 0 | 一个还在跑 | **UNSTABLE**（不是 BLOCKED） |
+| #19 检查全绿、AI 只留了 1 条线程 | 1 | 0 | 全 SUCCESS | **BLOCKED** |
+
+结论：规则集里 `required_approving_review_count` 当前是 **0**，所以**缺审查并不阻塞**；
+真正阻塞的是 `required_review_thread_resolution` —— **一条未解决的评审线程就够**。
+因此 #17 的阻塞原因就是那 7 条线程，不需要动用 `require_extra_approval_for_unattributed_changes`
+来解释（那条规则的含义仍未实测，别当结论引用）。
 
 顺带一个确定的结论：Qoder Action 留下的是 **COMMENTED** 审查而不是 APPROVED，
-所以它**填不上**「至少 1 名评审人批准」这一项（等 `required_approving_review_count` 调回 1 时这条就会显形）。
+所以它**填不上**「至少 1 名评审人批准」那一项——等 `required_approving_review_count` 调回 1 时这条就会显形。
+而它**会**创建评审线程，于是它实际上拥有对合并的否决权：它每留一条意见，人就必须逐条裁定。
+
+**还没证明的一步**：把线程全部 resolve 之后 #17 是否就转 `CLEAN`。`dismiss_stale_reviews_on_push: true`
+与 `require_extra_approval_for_unattributed_changes: true` 都还开着，可能另有干预。
+逐条裁定（采纳/不采纳/要求返修）是 G2 上人的活，脚本不代做。
 
 `scripts/github-lab.sh pr-status <n>` 现在走 GraphQL 把每项规则的实况都拉出来，
-并**由脚本自己**推出 `blockingReasons`，就是为了不给调用方留一个「凭印象填原因」的空档。
-推不出来时它会明说「原因未定位，需人工在 PR 页面核对」，而不是留空让人去猜。
+并**由脚本自己**推出 `blockingReasons`。「没有任何 APPROVED 审查」被单列进
+`possibleAdditionalBlockers` 而**不进** `blockingReasons`——它是不是阻塞取决于
+`required_approving_review_count`，而那张 PAT 没有 Administration 权限、读不到这个值；
+把一个读不到的规则断言成阻塞原因，正是首轮那个错的形状。
 
 ## 两个环境的坑（都是实测踩到的）
 

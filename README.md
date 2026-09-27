@@ -78,8 +78,16 @@ BLOCKED 加上 `reviewDecision` 为空，就把原因写成「需要至少 1 名
 把「评审线程未解决」填成了 `false`——而那条 PR 上实际有 **7 条 qoderai 的评审线程，一条都没解决**，
 且 `required_approving_review_count` 当时是 0，所以「至少 1 名评审人」那条规则根本没生效。
 根因在工具：当时的 `pr-status` 不返回评审线程，调用方无从得知。
+
+后来用 PR #19 做了一次对照把规则分开了：0 条线程 + 0 个批准时是 `UNSTABLE`（不阻塞），
+AI 只留下 **1 条**评审线程、检查全绿时就变成了 `BLOCKED`。所以真正卡住的是
+`required_review_thread_resolution`，一条未解决线程就够——这也意味着 AI 审查实际上握有对合并的否决权：
+它每留一条意见，人就必须逐条裁定。
+
 `github-lab.sh pr-status <n>` 现在会把每项规则的实况拉出来并自己推出 `blockingReasons`，
-就是为了不给调用方留一个「凭印象填原因」的空档。详见 `lab/README.md`。
+就是为了不给调用方留一个「凭印象填原因」的空档；读不到的规则（例如那个需要 Administration
+权限才能看的 `required_approving_review_count`）单列进 `possibleAdditionalBlockers`，
+不断言成阻塞原因。详见 `lab/README.md`。
 
 ## 目录
 
