@@ -9,7 +9,6 @@
   "mergeCommit": "671cca8",
   "prNumber": 17,
   "prUrl": "https://github.com/ganyu21/ai_devops_demo/pull/17",
-  "finalSha": "c066ad92af03ed5f048764ff2ec1f9c51fc44e85",
   "gateDecisions": [
     {
       "gate": "G1",
@@ -27,7 +26,7 @@
   "blockedBy": {
     "stage": "P7",
     "state": "S6_MERGE_BLOCKED",
-    "blockedAtSha": "c066ad92af03ed5f048764ff2ec1f9c51fc44e85",
+    "blockedAtSha": "af23d20f207cdfaf73a864608de960278484fec9",
     "reasons": [
       {
         "source": "github-lab.sh pr-status 17",
@@ -41,5 +40,5 @@
   },
   "nextAction": "DevOps-Waker 对最终 SHA 重跑 jenkins/verify；状态回写成功后 Lead-Waker 主持 G2 人工门禁",
   "createdAt": "2026-09-27T08:25:00Z",
-  "updatedAt": "2026-09-27T11:36:38Z"
+  "updatedAt": "2026-09-27T11:37:29Z"
 }
