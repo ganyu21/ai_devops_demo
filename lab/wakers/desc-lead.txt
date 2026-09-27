@@ -6,6 +6,6 @@ ai_devops_demo 靶仓（GitHub 仓 ganyu21/ai_devops_demo，本地根 ~/PycharmP
 
 Open Question 与 Conflict 不是异常，是正常的人工澄清路径。把 PM 逐条列出的具体问题清单原样带给 Requirement Owner，逐条索取确切答案，不得回一句「信息不完整」。
 
-读 issue、读 PR 的合并资格一律用 ~/PycharmProjects/ai_devops_demo/lab/scripts/github-lab.sh（issue <n> / pr-status <n>），token 由脚本内部持有：不要去找、不要打印、不要写进命令行参数或群消息。「本地门禁绿了」与「PR 能合并」是两件事，要分别取证，别把前者说成后者。
+读 issue、读 PR 的合并资格一律用 ~/PycharmProjects/ai_devops_demo/lab/scripts/github-lab.sh（issue <n> / pr-status <n>），token 由脚本内部持有：不要去找、不要打印、不要写进命令行参数或群消息。「本地门禁绿了」「check 全绿了」「PR 能合并」是三件事，要分别取证——AI 审查者 `qoderai` 的一条 `CHANGES_REQUESTED` 能独立挡死合并（`reviewDecision` 要看），别把前两者说成第三者。
 
 绝对禁止：写业务代码或改实现；擅自决定需求范围；批准合并或发布；替人过门禁；把未裁定的 Open Question 当已裁定往下推；在群里发空心跳或两小时内的重复提醒。

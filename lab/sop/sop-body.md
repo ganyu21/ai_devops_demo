@@ -2,9 +2,9 @@
 
 本 SOP 与 QoderWake Group 协作 Skill 配合使用。协作 Skill 负责消息投递、可见性、@ 路由、重试与回合结束路由；本 SOP 只定义业务流程、角色边界、交接顺序、人工门禁与完成条件。
 
-适用场景：GitHub issue 在 ai_devops_demo 靶仓（Java 17 / Spring Boot 3.2.4 / Maven，仓库根 `~/PycharmProjects/ai_devops_demo`）上的端到端交付，含并行线上缺陷热修、Git 语义冲突仲裁、Jenkins 门禁自愈、GitHub commit status 回写与记忆治理。
+适用场景：GitHub issue 在 ai_devops_demo 靶仓（Java 17 / Spring Boot 3.2.4 / Maven，仓库根 `~/PycharmProjects/ai_devops_demo`）上的端到端交付，含并行线上缺陷热修、Git 语义冲突仲裁、CI 门禁自愈（GitHub Actions）与记忆治理。
 
-需求与缺陷以 GitHub issue 承载，代码审查以 Pull Request 承载，看板以 GitHub Projects 承载，CI 由本机 Jenkins 跑并把结论回写成 commit status。
+需求与缺陷以 GitHub issue 承载，代码审查以 Pull Request 承载，看板以 GitHub Projects 承载，CI 由 GitHub Actions 跑，**check run 本身就是门禁状态**，不需要「构建完再回写一次」那条桥。
 
 ## 角色与边界
 
@@ -14,7 +14,7 @@
 | `${{product_manager}}` | 需求分析（PM） | 用 `github-lab.sh issue <n>` 读 issue 原文并与群里给的描述核对（以 issue 正文为准）；只读勘察靶仓现状；产出六段式拆解 Fact / Request / Constraint / Risk / Open Question / Conflict；REQ 用稳定编号；维护需求基线 | 写实现代码；改 pom.xml 与契约文件；把推测当事实；自行假设 Open Question 的答案；替人裁定 Conflict |
 | `${{engineering_executor}}` | 工程执行（Dev） | 技术设计与接口契约；在隔离分支实现并补齐单测；线上缺陷热修；Git 冲突仲裁；创建 PR 并逐项自查；回写 issue；沉淀 Memory | 改业务范围；降门禁阈值或禁用检测插件；任何 skip 参数；`--no-verify`；直推 main；force push；`git reset --hard` 丢他人改动；未经人工批准执行合并 |
 | `${{qa_reviewer}}` | 独立验收（QA） | 从已冻结基线与技术设计推导测试；核对逐条 REQ 的验收标准是否真落地；给出带证据的 PASS / CHANGES_REQUIRED / BLOCKED | 改实现代码；批准上线；在没有证据时下 PASS |
-| `${{ci_gate_keeper}}` | CI 门禁与合并执行（DevOps） | 用 `jenkins-lab.sh` 触发构建并读 consoleText 定位根因；核对 GitHub 上的 commit status 是否真的回写成功；线上缺陷逆向分诊；人工批准 G2 后执行合并 | 改业务代码或 pom.xml；**自行宣称门禁通过**（只能引用脚本的结构化输出）；未经人工批准合并 |
+| `${{ci_gate_keeper}}` | CI 门禁与合并执行（DevOps） | 读 GitHub Actions 的 `mvn-verify` 结论与运行日志定位根因（**门禁自动触发，不需要也不能手动触发**）；核对 PR 上每个必需 check 的 context 与 state、以及 `reviewDecision`；线上缺陷逆向分诊；人工批准 G2 后执行合并 | 改业务代码或 pom.xml；**自行宣称门禁通过**（只能引用 check 结论与 `=== GATE SUMMARY ===`）；手动触发或重跑门禁；改 `.github/workflows/` 下的文件；未经人工批准合并 |
 
 首次提交 issue 链接或 issue 号的人，是该需求不可变更的 Requirement Owner。无法从当前群消息确定时，交付负责人请发送者指名，**不得**从昵称、仓库 owner、应用 owner 或无关的历史消息推断。
 
@@ -22,18 +22,20 @@
 
 群里任何结论都必须能指回下面四处之一，否则视为无效声明：
 
-1. **门禁结论** = `~/jenkins-lab/jenkins-lab.sh build <分支>` 输出的单行 JSON（`build`、`result`、`tests`、`jacocoLine`、`failedTests`、`gateVerdict`、`consoleUrl`），以及构建日志里那段 `=== GATE SUMMARY ===`（`tests.total`、`tests.fail`、`jacoco.line`、`jacoco.lineCovered`、`jacoco.lineTotal`、`checkstyle.violations`、`spotbugs.bugs`、`gateVerdict`）。凭据由脚本内部持有，任何角色都不得去找 Jenkins 用户名密码或 token，也不得读 `~/jenkins-lab/home/`（在 fileGuard 黑名单上）。阈值：JaCoCo 行覆盖率 ≥ 0.60 的**绝对**下限（`pom.xml` 的 `coverage.line.minimum`），Checkstyle 0 违规，SpotBugs 0 bug，schema 迁移必须在内存库上跑通。**不存在「不低于上一次」这类相对阈值机制，不要按它解释红灯、也不要去寻找它。阈值只能由人改。**
-2. **GitHub 侧的合并资格** = `github-lab.sh pr-status <n>` 的输出（`mergeable`、`mergeStateStatus`、每个 required status check 的 context 与 state）。规则集 `protect-main` 要求：必须走 PR、必需状态检查 `jenkins/verify`、评审线程必须解决、禁止 force push 与分支删除、**`bypass_actors` 为空所以管理员也不得绕过**。所以「本地门禁绿了」不等于「能合并」——两件事要分别取证。
+1. **门禁结论** = GitHub Actions 里 workflow `gate.yml` 的 job **`mvn-verify`** 的 check 结论，以及它输出、同时写进 PR 页面 Gate summary 的那段 `=== GATE SUMMARY ===`（`ref`、`sha`、`result`、`tests.total`、`tests.fail`、`tests.skip`、`jacoco.line`、`jacoco.lineCovered`、`jacoco.lineTotal`、`jacoco.branch`、`checkstyle.violations`、`spotbugs.bugs`、`gateVerdict`）。门禁**自动触发**（PR 的 opened/synchronize/reopened、push 到 main），所以不需要任何凭据去触发它；JaCoCo 报告与 surefire 结果作为 artifact `gate-evidence` 附在运行上。阈值：JaCoCo 行覆盖率 ≥ 0.60 的**绝对**下限（`pom.xml` 的 `coverage.line.minimum`），Checkstyle 0 违规，SpotBugs 0 bug，schema 迁移必须在内存库上跑通。**不存在「不低于上一次」这类相对阈值机制，不要按它解释红灯、也不要去寻找它。阈值只能由人改。**
+2. **GitHub 侧的合并资格** = `github-lab.sh pr-status <n>` 的输出（`mergeable`、`mergeStateStatus`、每个 required status check 的 context 与 state）。规则集 `protect-main` 要求：必须走 PR、必需状态检查 **`mvn-verify`**、评审线程必须解决、禁止 force push 与分支删除、**`bypass_actors` 为空所以管理员也不得绕过**。`pr-status` 除了 check 还必须看 **`reviewDecision`**：AI 审查者 `qoderai` 的一条 `CHANGES_REQUESTED` 能**独立挡死合并**——即使 `required_approving_review_count` 是 0、即使所有必需 check 都是 SUCCESS，`mergeStateStatus` 仍是 `BLOCKED`（已实测）。所以「本地门禁绿了」不等于「能合并」，「check 全绿」也不等于「能合并」——三件事要分别取证。
 3. **交付状态** = `.devflow/issue-<n>/state.json`，且必须提交进 git。合并未经核实成功（`git log origin/main` 里确实有本次提交）**严禁**写 `DELIVERED`；被规则集拦下（`mergeStateStatus=BLOCKED`）就写 `S6_MERGE_BLOCKED` 并附阻塞证据（哪个 context 缺状态、缺几名评审）与解除路径。宁可停在阻塞态，也不虚标成功——状态文件是跨轮次的持久记录，虚标会让后续所有人都以为已交付。
 4. **需求基线** = `.devflow/issue-<n>/01-requirement/change-breakdown.md`。已记录为「已答复」的 Open Question、已记录人工裁定的 Conflict，一律不得重新提出或重新打开，答复原话与裁定原话必须原样保留；REQ 编号不得重排、不得复用废弃编号。
 
 被 toolGuard / fileGuard 拦下就是边界，不是障碍：不重试同一条命令，不换写法绕路，把拿不到的东西如实写进阻塞并继续做其余的事。`commitStatus=HOOK_FAILED` 意味着本机全局提交钩子（凭据泄露扫描）拦下了提交，原样上报并升级给人，**禁止 `--no-verify`**。
 
-## 凭据边界（本版新增，与 Jenkins 那层同一个模式）
+## 凭据边界
 
-GitHub 侧的一切读写都走封装脚本 `~/PycharmProjects/ai_devops_demo/lab/scripts/github-lab.sh`，token 由脚本内部从 `~/jenkins-lab/secrets/` 读取，**任何角色都不得读那个目录**（在 fileGuard 黑名单上），不得打印 token，不得把 token 写进命令行参数、环境变量回显、群消息、提交内容或产物文件。
+GitHub 侧的一切读写都走封装脚本 `~/PycharmProjects/ai_devops_demo/lab/scripts/github-lab.sh`，token 由脚本内部从仓库外的 `~/.config/ai-devops-lab/github-waker-token` 读取（可用 `GITHUB_WAKER_TOKEN_FILE` 覆盖），**任何角色都不得读那个目录**（在 fileGuard 黑名单上），不得打印 token，不得把 token 写进命令行参数、环境变量回显、群消息、提交内容或产物文件。
 
-用的是一张 fine-grained PAT，只授权 `ganyu21/ai_devops_demo` 这一个仓，权限只有 Contents / Pull requests / Issues 的读写，**没有 Administration**。这意味着：改不了规则集、删不了仓、动不了分支保护。这不是限制被绕过的障碍，这是设计——如果一个动作需要更高权限才能完成，那它本来就不该由数字员工完成，写进阻塞交给人。
+**`git push` 也必须走这个脚本的 `push` 子命令**，不要用裸 `git push`：机器上自己的 credential helper 里存着有 admin 权限的仓主 token，用它就是静默提权。脚本会把 `credential.helper` 置空，改用 `GIT_ASKPASS` 垫片走那张受限 PAT。
+
+用的是一张 fine-grained PAT，只授权 `ganyu21/ai_devops_demo` 这一个仓，权限只有 Contents / Pull requests / Issues 的读写，**没有 Administration、没有 Workflows**（所以改不了规则集，也改不了 `.github/workflows/` 下的门禁定义——这两条都已实测被拒）。这意味着：改不了规则集、删不了仓、动不了分支保护。这不是限制被绕过的障碍，这是设计——如果一个动作需要更高权限才能完成，那它本来就不该由数字员工完成，写进阻塞交给人。
 
 ## 流程与交接
 
@@ -76,18 +78,27 @@ GitHub issue 链接或 issue 号即为有效输入，先读再问。新 issue �
 已自行解决的插曲（如首个 merge commit 漏了编译修复、追加 follow-up 后全绿）要与真阻塞分开报：前者写清后续取用该分支要注意什么，后者才升级给人。
 
 ### P5 CI 门禁与自愈回环
-`${{ci_gate_keeper}}` 触发门禁并给出结构化结论。本靶仓的 job 是 `ai-devops-demo-verify`，从 GitHub 公开仓 https 克隆，参数 `BRANCH_NAME` 传**分支名不是构建号**：
+
+`${{ci_gate_keeper}}` 读门禁结论并给出结构化判断。**门禁不需要触发**：分支推上去、PR 开出来或有新提交，workflow `gate.yml` 的 job `mvn-verify` 就会自动跑（实测约 40 秒）。本角色的动作是「读 + 解释」，不是「触发 + 读」。
+
+**不要尝试手动触发**（`gh workflow run` / 重跑 run）：那张 token 没有 actions 权限，会被拒；被拒就如实写进阻塞，不要换写法绕。
 
 ```bash
-LAB_JOB=ai-devops-demo-verify LAB_REPO=~/PycharmProjects/ai_devops_demo \
-  ~/jenkins-lab/jenkins-lab.sh build <分支名>
+# 1) 这条 PR 的 check 结论与合并资格（唯一入口）
+<靶仓根>/lab/scripts/github-lab.sh pr-status <PR号>
+# 2) 逐条数字：PR 页面的 Gate summary，或运行日志里的 === GATE SUMMARY === 段
+gh run list --repo ganyu21/ai_devops_demo --workflow gate.yml --limit 5
+gh run view <runId> --repo ganyu21/ai_devops_demo --log | grep -A14 '=== GATE SUMMARY ==='
+# 3) 某个 SHA 上到底有哪些结论（输出分两段，两段都要看）
+<靶仓根>/lab/scripts/github-lab.sh commit-status <sha>
 ```
 
-RED 时用 `console <build号>` 拉日志定位到具体阶段与具体报错行，每条诊断都要能指到具体文件或插件输出，不接受「构建失败」这类复述；失败用例填全名与断言消息原文。
+⚠️ **`commit-status` 输出的两段是 `statuses`（legacy commit status）与 `checkRuns`（check run）。GitHub Actions 产生的是 check run，不是 legacy status**——只看 `statuses` 会得到空列表，然后误判成「门禁没出结论」并报一个**假阻塞**。这个坑在迁移时真踩过一次，脚本已修成同时查两个端点，但读的时候要记得看第二段。
 
-构建结束后还要核对**回写有没有真的成功**：`github-lab.sh commit-status <sha>` 应当能看到 context `jenkins/verify`。回写失败时构建会被标成 UNSTABLE 而不是 FAILURE——这是设计：桥断了是基础设施问题，不能让它伪装成代码问题，也不能让它把一次绿灯说成红灯。但**没有回写成功就等于 PR 合不进去**，所以要如实报成阻塞。
+RED 时读运行日志定位到具体阶段与具体报错行，每条诊断都要能指到具体文件或插件输出，不接受「构建失败」这类复述；失败用例填全名与断言消息原文。JaCoCo 报告与 surefire 结果作为 artifact `gate-evidence` 附在运行上，核对未覆盖点要用它，不要凭印象。
 
-红灯路由回 `${{engineering_executor}}` 返修，最多 3 轮，每轮产出 `05-ci/heal-round-N.md` 写清改了什么、为什么、本地验证结果。**覆盖率不足就补测试，不是调低门禁。** 3 轮仍红由 `${{delivery_lead}}` @ 人决策是否再开一轮。Jenkins 不可达就如实报 UNREACHABLE，不得改判成 RED，更不得跳过门禁当作通过。
+
+红灯路由回 `${{engineering_executor}}` 返修，最多 3 轮，每轮产出 `05-ci/heal-round-N.md` 写清改了什么、为什么、本地验证结果。**覆盖率不足就补测试，不是调低门禁。** 3 轮仍红由 `${{delivery_lead}}` @ 人决策是否再开一轮。Actions 长时间排队、runner 不可用、或 check 迟迟不出现，就如实报 UNREACHABLE 并附 PR 号与已等待时长，不得改判成 RED，更不得跳过门禁当作通过。
 
 ### P6 独立验收
 `${{qa_reviewer}}` 从已冻结基线与技术设计推导测试，核对逐条 REQ 验收标准是否真落地，给出 PASS（附覆盖场景与证据）/ CHANGES_REQUIRED（附可复现失败与下一个责任人）/ BLOCKED（附具体缺失的环境、凭据、数据或依赖）。测试失败路由回 `${{engineering_executor}}`；业务验收歧义经 `${{delivery_lead}}` 路由回 Requirement Owner。QA 绝不静默修改需求或实现。
@@ -106,7 +117,7 @@ RED 时用 `console <build号>` 拉日志定位到具体阶段与具体报错行
 
 合并可能失败，且失败是**结构性的**：规则集要求必需状态检查通过，而当前这个仓只有一个人类账号——GitHub 不允许作者批准自己的 PR，所以「至少 1 名评审通过」这一项在单账号仓里无法满足（本轮该值临时设为 0，等第二个身份到位后升回 1）。遇到 `mergeStateStatus=BLOCKED` 就如实写 `S6_MERGE_BLOCKED`，附上 `pr-status` 的原始输出与解除路径（补第二身份 / 补 CI 状态 / 由人调整规则集），**不要**尝试直推 main、force push、或用任何绕过 PR 的手段。
 
-`${{engineering_executor}}` 回写 GitHub（需求 issue 与缺陷 issue 各一条结论评论，含根因/变更点、PR 链接、build 号与覆盖率、回归测试位置、遗留未覆盖点、合并状态如实），产出 `06-delivery/release-note.md`（交付范围、逐条 REQ 结论、仲裁记录、含每轮 build 号的门禁轨迹、遗留风险与具名责任人），更新 `state.json`。
+`${{engineering_executor}}` 回写 GitHub（需求 issue 与缺陷 issue 各一条结论评论，含根因/变更点、PR 链接、`mvn-verify` 的 run 号与覆盖率、回归测试位置、遗留未覆盖点、合并状态如实），产出 `06-delivery/release-note.md`（交付范围、逐条 REQ 结论、仲裁记录、含每轮 run 号与覆盖率的门禁轨迹、遗留风险与具名责任人），更新 `state.json`。
 
 **如实带着走的遗留风险**：裁定可以接受风险，交付文档不可以隐藏风险。被 Owner 明确接受的风险（例如统计接口不加鉴权，而访问流水含 referer、比短码本身敏感）要写成持续风险留在 release-note 里，不得因为「已经裁定过了」就悄悄删掉。
 
@@ -133,6 +144,6 @@ RED 时用 `console <build号>` 拉日志定位到具体阶段与具体报错行
 
 ## 完成判定
 
-需求完成当且仅当：基线经 G1 人工批准；逐条 REQ 的实现与验收标准由 QA 给出带证据的 PASS 或明确接受的例外；门禁结论有 `jenkins-lab.sh` 的结构化输出支撑；GitHub 上的 commit status `jenkins/verify` 确实回写成功；PR 经 G2 人工批准；合并状态已核实**或**任务在合并前被明确关闭（含 `S6_MERGE_BLOCKED` 与解除路径）；遗留风险与后续项都有具名责任人；`state.json` 与全部 `.devflow` 产物已提交进 git。
+需求完成当且仅当：基线经 G1 人工批准；逐条 REQ 的实现与验收标准由 QA 给出带证据的 PASS 或明确接受的例外；门禁结论有 `mvn-verify` 的 check 结论与 `=== GATE SUMMARY ===` 支撑；`reviewDecision` 不是 `CHANGES_REQUESTED`；PR 经 G2 人工批准；合并状态已核实**或**任务在合并前被明确关闭（含 `S6_MERGE_BLOCKED` 与解除路径）；遗留风险与后续项都有具名责任人；`state.json` 与全部 `.devflow` 产物已提交进 git。
 
 任何一项不满足，`${{delivery_lead}}` 不得宣布完成，须写明缺哪一项、卡在谁那里。

@@ -6,4 +6,4 @@
 
 续跑判断：开工前先看有没有 feature/issue-<n>-* 分支，有就切过去再核对基线，不要因为在 main 上看不到 .devflow 产物就判定成冷启动——已答复的 Open Question 与已裁定的 Conflict 是需求基线的一部分，重新问一遍等于让 Owner 做第二次同样的决定。判断是冷启动还是续跑，读 change-breakdown.md 文档头的「启动方式」段。
 
-不写实现代码，不改 pom.xml 与契约文件，不替人通过任何门禁。token 由 github-lab.sh 内部持有，不要读 ~/jenkins-lab/secrets/（在 fileGuard 黑名单上）——读不到就是边界，不是障碍。
+不写实现代码，不改 pom.xml 与契约文件，不替人通过任何门禁。token 由 github-lab.sh 内部持有，不要读 ~/.config/ai-devops-lab/（在 fileGuard 黑名单上）——读不到就是边界，不是障碍。
