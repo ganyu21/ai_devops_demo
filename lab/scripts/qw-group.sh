@@ -92,9 +92,60 @@ pend_count() {
   "$API" GET /api/permissions/approvals/pending 2>/dev/null | "$NODE" "$RENDER" pendcount
 }
 
+# 判读一次审批轮询的结果。$1 = pend_count 的输出。
+#
+# 「队列取不到」必须与「队列真的是空的」分开：前者是审批守卫自身故障（鉴权坏了、
+# daemon 重启了、API 形状变了），后者才是没事。把前者显示成后者，需要人工批准的那一步
+# 就会在 5 分钟窗口里静默超时，而操作员看到的是「当前没有任何待审批」——
+# 这正是 qw-render.js 的 pendcount 在解析失败时输出 ERR 而不是空串的原因。
+#
+# 状态挂在 PEND_SEEN / PEND_ERRN 两个全局上：只在变化时打印，
+# 否则每 10 秒刷一屏同样的队列，真变化反而看不出来。
+PEND_SEEN=""
+PEND_ERRN=0
+poll_approvals() {
+  local n="${1-}"
+  if [ "$n" = "ERR" ] || [ -z "$n" ]; then
+    PEND_ERRN=$((PEND_ERRN + 1))
+    # 转入故障态立刻报一次，之后每 6 轮（默认约 1 分钟）再报一次，避免刷屏盖掉真消息。
+    if [ "$PEND_ERRN" = 1 ] || [ $((PEND_ERRN % 6)) = 0 ]; then
+      echo "⚠ 拿不到 toolGuard 审批队列（连续 ${PEND_ERRN} 次）——这是**审批守卫自身异常**，不是队列为空。"
+      echo "   需要人工批准的步骤会在 5 分钟窗口里静默超时。排查："
+      echo "     lab/scripts/qw-api.sh GET /api/permissions/approvals/pending"
+      echo "     \$QW runs list ${CONV}   # 先看 run 状态，别只看消息列表"
+    fi
+    PEND_SEEN=""
+    return 1
+  fi
+  # 先验是不是纯数字，再宣布「恢复」。顺序反了会把一个坏值当成故障结束，
+  # 打印一条 ✓ 之后才说它不认得——读的人只看见那条 ✓。
+  case "$n" in
+    ''|*[!0-9]*)
+      PEND_ERRN=$((PEND_ERRN + 1))
+      echo "⚠ 审批队列返回了不认得的计数（第 ${PEND_ERRN} 次）：$(printf '%s' "$n" | cut -c1-80)"
+      echo "   同样按「守卫自身异常」处理，不是队列为空。"
+      PEND_SEEN=""
+      return 1 ;;
+  esac
+  [ "$PEND_ERRN" != 0 ] && echo "✓ 审批队列恢复可读（此前连续 ${PEND_ERRN} 次异常）"
+  PEND_ERRN=0
+  if [ "$n" != "0" ] && [ "$n" != "$PEND_SEEN" ]; then
+    PEND_SEEN="$n"
+    render_approvals
+  elif [ "$n" = "0" ]; then
+    PEND_SEEN=""
+  fi
+  return 0
+}
+
 # 工作树占用（含「有没有未推送的工作」）由 env.sh 的 lab_worktrees 提供，
 # 因为 qw-up.sh 也要用它——两处各写一份必然漂移。
 show_worktrees() { lab_worktrees; }
+
+# LAB_SOURCE_ONLY=1 时只加载函数定义、不执行子命令分发。
+# 存在的唯一理由是 poll_approvals 需要被测：它是这段里唯一会「把守卫故障显示成没事」的地方，
+# 而它跑在 watch 的死循环里，没法在原地驱动。
+[ "${LAB_SOURCE_ONLY:-0}" = "1" ] && return 0
 
 CMD="${1:-status}"
 
@@ -158,17 +209,9 @@ case "$CMD" in
     [ -n "$SEQ" ] || SEQ=0
     echo "watching ${CONV} from seq=${SEQ} every ${INTERVAL}s（Ctrl-C 退出）"
     echo "同时盯 toolGuard 人工审批：窗口只有 5 分钟，只存内存不落库，超时即该步失败且无法补批。"
-    SEEN=""
+    PEND_SEEN=""; PEND_ERRN=0
     while true; do
-      # Group 轨道没有 flow-controller 把审批顶到人面前，错过就是这一步静默失败。
-      # 只在条数变化时打印，否则每 10 秒刷一屏同样的队列，真变化反而看不出来。
-      N="$(pend_count)"; N="${N:-0}"
-      if [ "$N" != "0" ] && [ "$N" != "$SEEN" ]; then
-        SEEN="$N"
-        render_approvals
-      elif [ "$N" = "0" ]; then
-        SEEN=""
-      fi
+      poll_approvals "$(pend_count)"
 
       OUT=$(timeout 60 "$QW" messages list "$CONV" --after-seq "$SEQ" --limit 200 --json 2>/dev/null \
         | "$NODE" "$RENDER" render "$PMAP")

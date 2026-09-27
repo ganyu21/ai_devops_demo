@@ -20,7 +20,9 @@
 #   github-lab.sh issue <n>                        issue 正文、标签、状态
 #   github-lab.sh issue-comment <n> <file>         用文件内容发评论（避开引号换行守卫）
 #   github-lab.sh pr-create <branch> <tf> <bf>     开 PR（标题与正文都走文件）
-#   github-lab.sh pr-status <n>                    合并资格 + 每个必需状态检查
+#   github-lab.sh pr-status <n>                    合并资格 + 未解决评审线程 + 由脚本推导的阻塞原因
+#   github-lab.sh pr-reply <threadId> <file>       回复一条评审线程（裁定意见写在文件里）
+#   github-lab.sh pr-resolve <threadId> <reason>   把一条评审线程标记为已解决（理由会先回帖留痕）
 #   github-lab.sh commit-status <sha>              该 SHA 上的 commit status 与 check run（两个都查）
 #   github-lab.sh ruleset                          main 的规则集（治理控制现状）
 #   github-lab.sh push <branch>                    推分支（用 PAT，不用机器上的仓主凭据）
@@ -105,7 +107,7 @@ case "$cmd" in
         pullRequest(number:$n){
           number mergeable mergeStateStatus reviewDecision
           reviewThreads(first:100){nodes{
-            isResolved isOutdated path line
+            id isResolved isOutdated path line
             comments(first:1){nodes{author{login} body}}
           }}
           statusCheckRollup{
@@ -160,7 +162,7 @@ case "$cmd" in
             total: ($th|length),
             unresolved: ($unres|length),
             unresolvedDetail: [ $unres[] | {
-              path, line, outdated: .isOutdated,
+              threadId: .id, path, line, outdated: .isOutdated,
               author: (.comments.nodes[0].author.login // "?"),
               excerpt: ((.comments.nodes[0].body // "") | gsub("[\\n\\r]+"; " ") | .[0:240])
             } ]
@@ -185,6 +187,43 @@ case "$cmd" in
           ),
           note: "blockingReasons 由本脚本从 GraphQL 实况推导，不要用自己的印象覆盖它。若它为空而 mergeStateStatus 仍是 BLOCKED，说明还有一条本脚本没覆盖的规则（例如 require_extra_approval_for_unattributed_changes）——此时如实报告「原因未定位，需人工在 PR 页面核对」，不要猜。"
         }'
+    ;;
+
+  pr-reply)
+    tid="${1:?评审线程 id（pr-status 的 reviewThreads.unresolvedDetail[].threadId）}"
+    bf="${2:?正文文件}"
+    [ -f "$bf" ] || { echo '{"error":"NO_FILE","detail":"正文文件不存在。长内容与多行正文一律走文件，不要塞进 argv"}'; exit 2; }
+    # 用 GraphQL 而不是 REST 的 pulls/<n>/comments/<id>/replies：REST 那条要的是 database id，
+    # 而 pr-status 从 GraphQL 拿到的是 node id（PRRT_…），两者不通用。
+    "$GH" api graphql -F threadId="$tid" -F body=@"$bf" -f query='
+      mutation($threadId:ID!, $body:String!){
+        addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:$threadId, body:$body}){
+          comment{ url createdAt }
+        }
+      }' --jq '.data.addPullRequestReviewThreadReply.comment // {error:"NO_REPLY_CREATED"}'
+    ;;
+
+  pr-resolve)
+    tid="${1:?评审线程 id}"
+    reason="${2:?裁定理由（必填——resolve 是个不可见的动作，不留理由就等于把裁定过程丢掉）}"
+    # 先把理由回帖留痕，再 resolve。顺序不能反：resolve 之后线程会折叠，
+    # 后来的人只看得到「已解决」，看不到当初为什么判它不阻塞。
+    tmp="$(mktemp -t prresolve.XXXXXX)" || { echo '{"error":"TMPFILE"}'; exit 2; }
+    chmod 600 "$tmp"
+    printf '裁定：%s\n\n（本线程随后被标记为已解决。理由先留在这里，是因为 resolve 之后线程会折叠，后来的人只看得到「已解决」而看不到当初的判断依据。）\n' "$reason" > "$tmp"
+    "$HERE/$(basename "${BASH_SOURCE[0]}")" pr-reply "$tid" "$tmp" >/dev/null 2>&1
+    replied=$?
+    rm -f "$tmp"
+    if [ "$replied" != 0 ]; then
+      echo '{"error":"REPLY_FAILED","detail":"裁定理由没能回帖成功，因此不执行 resolve——不留痕的 resolve 等于把判断依据丢掉。先修好回帖再重试。"}'
+      exit 3
+    fi
+    "$GH" api graphql -F threadId="$tid" -f query='
+      mutation($threadId:ID!){
+        resolveReviewThread(input:{threadId:$threadId}){
+          thread{ id isResolved path line }
+        }
+      }' --jq '.data.resolveReviewThread.thread // {error:"NOT_RESOLVED"}'
     ;;
 
   commit-status|checks)

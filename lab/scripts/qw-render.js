@@ -26,8 +26,14 @@ process.stdin.on("end", () => {
   const i = Math.min(...[raw.indexOf("{"), raw.indexOf("[")].filter((x) => x >= 0));
   // approvals 模式下解析失败必须吵出来：静默无输出会被误读成「审批队列为空」，
   // 而真实原因可能是鉴权坏了（401）——那是整条流水线的问题，不是队列空。
+  // pendcount 模式同理，但它是给 watch 轮询用的，不能打印整段排查文案（会刷屏），
+  // 所以只输出一个非数字标记 ERR，由调用方决定怎么吵。
   // 其他模式保持静默：它们被 watch 轮询调用，刷屏比漏报更糟。
   const loud = (msg) => {
+    if (mode === "pendcount") {
+      process.stdout.write("ERR");
+      return;
+    }
     if (mode === "approvals") {
       process.stdout.write(`${msg}\n`);
       const t = raw.replace(/\s+/g, " ").trim();
@@ -83,8 +89,12 @@ process.stdin.on("end", () => {
   }
 
   if (mode === "pendcount") {
+    // 拿不到队列时必须输出一个**非数字**标记，不能输出空串或 0。
+    // 调用方（qw-group.sh watch）会把空串经 ${N:-0} 兜成 0，然后打印「审批队列为空」——
+    // 而真实原因可能是鉴权坏了。toolGuard 的审批窗口只有 5 分钟且只存内存、超时无法补批，
+    // 把「守卫自身故障」显示成「没人需要批准」，后果是那一步静默超时。
     const items = (d.data && d.data.items) || d.items || [];
-    process.stdout.write(String(Array.isArray(items) ? items.length : 0));
+    process.stdout.write(Array.isArray(items) ? String(items.length) : "ERR");
     return;
   }
 
