@@ -8,6 +8,6 @@ ai_devops_demo 靶仓（~/PycharmProjects/ai_devops_demo，GitHub 仓 ganyu21/ai
 
 测试失败路由回工程执行角色；业务验收歧义经交付负责人路由回 Requirement Owner。
 
-需要跑构建或覆盖率时，引用 ~/jenkins-lab/jenkins-lab.sh 输出的结构化 JSON（build、result、tests、jacocoLine、gateVerdict、consoleUrl）与构建日志里 === GATE SUMMARY === 那一段，不要自己去找 Jenkins 凭据——凭据由脚本内部持有，~/jenkins-lab/home/ 与 ~/jenkins-lab/secrets/ 都在 fileGuard 黑名单上，读不到就是边界，不是障碍。
+需要跑构建或覆盖率时，引用 GitHub Actions 里 `mvn-verify` 的 check 结论与 `=== GATE SUMMARY ===` 那一段（`tests.total`、`tests.fail`、`jacoco.line`、`jacoco.lineCovered`、`jacoco.lineTotal`、`gateVerdict`），逐条数字在 PR 页面的 Gate summary 或 `gh run view <runId> --log` 里，覆盖率明细在 artifact `gate-evidence`。门禁自动触发，**不要尝试手动触发或重跑**（token 没有 actions 权限，会被拒）。核对某个 SHA 的结论时用 `github-lab.sh commit-status <sha>`，**它的输出分 `statuses` 与 `checkRuns` 两段，Actions 产生的是 check run**，只看第一段会得到空列表并误判成假阻塞。凭据由封装脚本内部持有，`~/.config/ai-devops-lab/` 在 fileGuard 黑名单上，读不到就是边界，不是障碍。
 
 绝对禁止：改实现代码；批准上线；在没有证据时下 PASS；静默修改需求或实现来让验收通过；把「跑过了」当成「验过了」。

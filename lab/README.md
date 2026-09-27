@@ -18,6 +18,37 @@ lab/
     └── gh-askpass.sh              GIT_ASKPASS 垫片，git 走 https 时用它取 token
 ```
 
+## ⚠️ 当前状态：仓内资产已领先于 daemon（刻意的，别当成不一致去"修"）
+
+机器门禁已从本机 Jenkins 迁到 GitHub Actions（workflow `gate.yml`，job `mvn-verify`），规则集的必需状态检查 context 也已从 `jenkins/verify` 换成 `mvn-verify`。本目录下的资产**已经全部改成 Actions 口径**：
+
+- `sop/sop-body.md` 已发布为 **`github-lab-group-delivery@1.0.2`**（release `ccr_01m3hazvbx7a2k0zt8jnvwvn3w`，digest `015b281f…`）
+- `wakers/desc-*.txt` 五份都已改写（DevOps 那份整份重写）
+
+**但两者都还没生效到运行态**，因为迁移发生时那一轮交付正在跑（QA 在 P6）：
+
+| 动作 | 状态 | 为什么先不做 |
+| --- | --- | --- |
+| `group sop set … @1.0.2` 重绑 | **待做** | 中途重绑会让正在跑的角色读到新旧两份正文，构成第二个事实源 |
+| `install.sh` 写入新描述 | **待做** | 同理：运行中的 Waker 下一轮会读到与开场时不同的角色边界 |
+
+所以这一轮的过渡靠**群消息**传达（已发，含新 context、读结论的入口、以及「不要手动触发门禁」）。**等这一轮 P7 收尾后**，按顺序补两步并复核：
+
+```bash
+lab/install.sh && lab/install.sh --check     # 描述装进 daemon，逐份核对「一致」
+qoderwake group sop set <convId> --sop github-lab-group-delivery@1.0.2 \
+  --param github-lab-group-delivery.delivery_lead=Lead-Waker \
+  --param github-lab-group-delivery.product_manager=PM-Waker \
+  --param github-lab-group-delivery.engineering_executor=Dev-Waker \
+  --param github-lab-group-delivery.qa_reviewer=QA-Waker \
+  --param github-lab-group-delivery.ci_gate_keeper=DevOps-Waker
+qoderwake group sop list --json <convId>     # 复核 version=1.0.2 且 5 个参数都解析到真实 Waker
+```
+
+重绑之后**必须重做预热与验证**（绑定 SOP ≠ 读到正文），验证问题要挑一个 1.0.1 与 1.0.2 之间不同的细节——本轮现成的判据是「门禁的必需状态检查 context 叫什么」，1.0.1 答 `jenkins/verify`、1.0.2 答 `mvn-verify`。
+
+`install.sh --check` 在这段过渡期会报「不一致」，那是**真信号不是故障**：它如实反映了仓内资产已改、daemon 还没改。
+
 ## 凭据模型
 
 数字员工用的是一张 **fine-grained PAT**：只授权 `ganyu21/ai_devops_demo` 这一个仓，权限只有 Contents / Pull requests / Issues 的读写，**没有 Administration**。所以它改不了分支规则集、删不了仓、动不了分支保护——需要更高权限才能完成的动作，本来就不该由数字员工完成。
