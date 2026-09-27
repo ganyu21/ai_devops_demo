@@ -3,7 +3,7 @@
   "title": "解析缓存加容量上限与 TTL；访问流水落库并提供统计查询接口",
   "relatedIssues": [3],
   "requirementOwner": "human/owner",
-  "currentPhase": "P1_G1_APPROVED",
+  "currentPhase": "P2_IMPL_COMPLETED",
   "baselineVersion": "v1.1",
   "baselineBranch": "feature/issue-2-cache-ttl-and-visit-log",
   "gateDecisions": [
@@ -21,7 +21,7 @@
     }
   ],
   "blockedBy": null,
-  "nextAction": "等待 Lead-Waker 将任务路由给 Dev-Waker 进入 P2",
+  "nextAction": "进入 P4 冲突仲裁；P5/P7 合并门禁口径与 qoderai 自动审查纪律已折入 P2 设计产物、merge-block-criteria.md 与 cr-checklist.md",
   "createdAt": "2026-09-27T08:25:00Z",
-  "updatedAt": "2026-09-27T08:35:00Z"
+  "updatedAt": "2026-09-27T10:30:00Z"
 }

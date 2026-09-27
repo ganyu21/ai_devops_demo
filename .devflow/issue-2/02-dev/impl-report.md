@@ -46,6 +46,23 @@
 - 命令：`export JAVA_HOME=/opt/homebrew/opt/openjdk@21 && /opt/homebrew/bin/mvn -B clean verify`
 - 结果：见 P2 提交后的 CI/Jenkins 运行；本报告产出时本地已全绿。
 
+## P5/P7 合并门禁口径（新增 qoderai 自动审查）
+
+流程纪律更新：P7 合并资格新增 `qoderai` 自动审查的 `reviewDecision` 维度，`dismiss` 不可用；修复后推送会触发 qoderai 重跑。
+
+对本 feature 的影响：
+
+1. **qoderai 意见若与 G1 基线冲突，以 G1 基线为准**，并在 `cr-checklist.md` 与 G2 现场明确列出冲突点及裁定依据。
+2. 若 qoderai 给出 `CHANGES_REQUESTED` 级别的审查结论，即使 Jenkins 门禁通过、GitHub 规则集状态检查通过，PR 仍视为**未满足合并资格**，DevOps-Waker 不得执行合并；须由 `Lead-Waker` 在 G2 人工门禁现场裁定是否按基线接受、要求 Dev-Waker 返修，或明确记录为可接受的例外。
+3. 因 qoderai 重跑由推送触发，任何批准后再推送的提交都会让已有 `reviewDecision` 失效，PR 回到待审查态；G2 批准必须落在**当前最新 SHA** 上。
+4. 若 qoderai 审查与 GitHub 规则集共同导致 `mergeStateStatus=BLOCKED`，`state.json` 应进入 `S6_MERGE_BLOCKED`，并附：
+   - `github-lab.sh pr-status` 原始输出；
+   - qoderai `reviewDecision` 状态；
+   - 具体阻塞项（缺失 `jenkins/verify` / qoderai 未通过 / 评审线程未解决 / 规则集硬性要求等）；
+   - 解除路径（例如由 Requirement Owner 在 G2 裁定、补充 qoderai 所需上下文、或等待 qoderai 重跑完成）。
+
+Dev-Waker 在编制 `cr-checklist.md` 时已把 qoderai 审查结果作为独立检查项列入，并说明其与 G1 基线的对照结论。
+
 ## 范围纪律自审
 
 - [x] `VisitLogService.record()` 没有 referer 空值保护。
@@ -53,3 +70,4 @@
 - [x] `V1__create_short_link.sql` 未被修改。
 - [x] 没有调低 `coverage.line.minimum`、没有 skip 参数、没有 `--no-verify`、没有直推 main、没有 force push。
 - [x] 未引入中间件或外部服务；`spring-boot-starter-jdbc` 是框架内库，用于访问已配置的 H2 数据源。
+- [x] P5/P7 合并门禁口径与 qoderai 自动审查纪律已折入 P2 设计产物与 `cr-checklist.md`。
