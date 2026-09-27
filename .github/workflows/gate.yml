@@ -1,11 +1,10 @@
 # 机器门禁。三层审查里的第一层：跑不跑得通。
 #
-# 为什么用它替代本机 Jenkins + 状态回写桥：
-#   1. check run 本身就是状态，不需要「构建完再回写一次」这条桥——桥断了 PR 就永远合不进去，
-#      那是原架构里最脆的一环（还依赖构建机上有 gh 登录态）。
+# 为什么门禁必须放在这里，而不是放在一个随分支走、由外部构建机读取的流水线定义文件里：
+#   1. check run 本身就是状态，不需要「构建完再往 PR 上回写一次」这条桥——桥断了 PR 就永远合不进去。
 #   2. 改这个文件需要 Workflows 权限，而数字员工那张 fine-grained PAT 没有。
-#      原来 Jenkinsfile 属于 Contents 权限、且 job 从被构建的分支读它，
-#      「改门禁让构建必绿 → 自己合并」这条路是通的；换成 Actions 之后被权限结构性堵死。
+#      门禁定义若属于 Contents 权限、又从被构建的那个分支读取，
+#      「改门禁让构建必绿 → 自己合并」这条路就是通的；放在 Actions 侧被权限结构性堵死。
 #   3. 日志、JaCoCo 报告、PR 上的 annotations 全部原生可见，学员不用去翻另一套 UI。
 #
 # 阈值只能由人改：不得调低 pom.xml 的 coverage.line.minimum，不得关插件，
@@ -21,8 +20,7 @@ on:
   # 结果 reopen 根本不跑门禁，PR 永远 BLOCKED，而现象看起来像「Actions 没反应」。
   pull_request:
     types: [opened, synchronize, reopened]
-  # 手动触发任意分支：替代原来 `jenkins-lab.sh build <分支名>` 的能力，
-  # 红灯分支 lab/predictable-code 的课堂演示靠它。
+  # 手动触发任意分支：红灯分支 lab/predictable-code 的课堂演示靠它。
   # 用法：gh workflow run gate.yml --ref <分支名>
   workflow_dispatch:
 
