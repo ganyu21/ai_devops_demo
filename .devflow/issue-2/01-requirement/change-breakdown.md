@@ -16,7 +16,7 @@
 - `openapi.yaml` 里已发布的两个路径 `POST /api/links`、`GET /{code}` 自本基线冻结后只读；`Referer` 为可选 header，且被描述为正常流量。
 - `application.yml` 中当前 `flyway.enabled=false`；`V1__create_short_link.sql` 已合入且只读。
 - `pom.xml` 门禁阈值：`coverage.line.minimum=0.60`，Checkstyle 0 违规、SpotBugs 0 bug、schema 迁移在内存 H2 库上跑通。
-- `main` 分支受规则集保护：必须走 PR、必需状态检查 `jenkins/verify`、评审线程必须解决、禁止 force push 与直推。
+- `main` 分支受规则集保护：必须走 PR、必需状态检查 `mvn-verify`、评审线程必须解决、禁止 force push 与直推。
 
 ## Request
 
