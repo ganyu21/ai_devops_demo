@@ -4,7 +4,7 @@
   "relatedIssues": [3],
   "requirementOwner": "human/owner",
   "currentPhase": "P7_S6_MERGE_BLOCKED",
-  "baselineVersion": "v1.1",
+  "baselineVersion": "v1.2",
   "baselineBranch": "feature/issue-2-cache-ttl-and-visit-log",
   "mergeCommit": "671cca8",
   "prNumber": 17,
@@ -23,6 +23,14 @@
       ]
     }
   ],
+  "g2Rework": {
+    "status": "REWORK_IN_PROGRESS",
+    "rejectedAt": "2026-09-27T14:18:08Z",
+    "pmAction": "在 change-breakdown.md 的 OQ7 保留 Owner 严格口径并升版基线至 v1.2",
+    "affectedReq": ["REQ-B-5"],
+    "strictRuling": "统计写入是旁路，不得占用 300ms 跳转预算，redirect 请求线程不得为写入同步等待",
+    "baselineCommit": null
+  },
   "blockedBy": {
     "stage": "P7",
     "state": "S6_MERGE_BLOCKED",
@@ -40,7 +48,7 @@
     ],
     "unblockPath": "由 Lead-Waker 主持 G2 人工门禁：Requirement Owner 明确批准合并，并对 qoderai COMMENTED 审查意见做出采纳/不采纳/要求返修的裁定；若 GitHub 仍要求有效 reviewDecision，由 Requirement Owner 在 PR 上给出 APPROVED 或等效审查结论。禁止手动 dispatch mvn-verify、禁止 dismiss qoderai review、禁止改动 .github/workflows/。"
   },
-  "nextAction": "Lead-Waker 主持 G2 人工门禁；Owner 批准并裁定 qoderai 意见后 DevOps-Waker 执行合并",
+  "nextAction": "Dev-Waker 按 G2 返修口径完成代码返修并提交证据；完成后重走 P5-P7 与 G2",
   "createdAt": "2026-09-27T08:25:00Z",
-  "updatedAt": "2026-09-27T11:48:00Z"
+  "updatedAt": "2026-09-27T14:20:00Z"
 }
