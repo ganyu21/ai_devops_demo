@@ -77,4 +77,25 @@ class OpenApiContractTest {
         assertThat((List<String>) request.get("required")).containsExactly("targetUrl");
         assertThat((Map<String, Object>) request.get("properties")).containsKey("targetUrl");
     }
+
+    @Test
+    void visitRecordKeepsRefererRequiredButNullable() throws IOException {
+        Map<String, Object> components = (Map<String, Object>) spec().get("components");
+        Map<String, Object> schemas = (Map<String, Object>) components.get("schemas");
+        Map<String, Object> visitRecord = (Map<String, Object>) schemas.get("VisitRecord");
+
+        assertThat((List<String>) visitRecord.get("required"))
+                .as("referer 必须始终出现在响应里；缺失 Referer 时值为 null，而不是字段消失")
+                .contains("referer");
+
+        Map<String, Object> referer =
+                (Map<String, Object>) ((Map<String, Object>) visitRecord.get("properties")).get("referer");
+        assertThat(referer.get("nullable"))
+                .as("契约必须显式声明 referer 可空，否则与无 Referer 的正常流量返回 null 相矛盾")
+                .isEqualTo(true);
+        assertThat(String.valueOf(referer.get("description")))
+                .as("契约必须写明缺失 Referer 是正常流量、此时字段为 null")
+                .contains("正常流量")
+                .contains("null");
+    }
 }

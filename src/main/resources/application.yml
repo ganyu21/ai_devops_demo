@@ -10,12 +10,16 @@ spring:
     username: sa
     password: ""
   flyway:
-    enabled: false
+    enabled: true
     locations: classpath:db/migration
 
 shortlink:
   public-base-url: http://localhost:8081
   redirect-budget-millis: 300
+  resolve:
+    cache:
+      max-size: 10000
+      ttl-minutes: 10
 
 logging:
   level:

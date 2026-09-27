@@ -63,6 +63,33 @@ paths:
                 type: string
         '404':
           description: 短码不存在
+  /api/links/{code}/visits:
+    get:
+      operationId: listVisits
+      summary: 查询短码最近访问流水
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: 返回条数上限，默认 50，硬上限 200
+          schema:
+            type: integer
+            default: 50
+            maximum: 200
+      responses:
+        '200':
+          description: 最近访问流水列表，按 visitedAt 倒序
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VisitRecord'
 components:
   schemas:
     CreateLinkRequest:
@@ -88,3 +115,22 @@ components:
           type: string
         shortUrl:
           type: string
+    VisitRecord:
+      type: object
+      required:
+        - code
+        - referer
+        - visitedAt
+      properties:
+        code:
+          type: string
+        referer:
+          type: string
+          nullable: true
+          description: >-
+            该字段始终出现在响应中（required），但值可能为 null：
+            缺失 Referer 属于正常流量（直接粘贴链接、严格的 Referrer-Policy、
+            App 内置浏览器、https 页面跳 http 目标），此时落库与返回的 referer 均为 null。
+        visitedAt:
+          type: string
+          format: date-time

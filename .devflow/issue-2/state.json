@@ -1,0 +1,125 @@
+{
+  "issue": 2,
+  "title": "解析缓存加容量上限与 TTL；访问流水落库并提供统计查询接口",
+  "relatedIssues": [3],
+  "requirementOwner": "human/owner",
+  "currentPhase": "P5_CLEAN_P6_PASS_G2_PENDING",
+  "baselineVersion": "v1.2",
+  "baselineBranch": "feature/issue-2-cache-ttl-and-visit-log",
+  "mergeCommit": "671cca8",
+  "prNumber": 17,
+  "prUrl": "https://github.com/ganyu21/ai_devops_demo/pull/17",
+  "gateDecisions": [
+    {
+      "gate": "G1",
+      "decision": "APPROVED",
+      "by": "Requirement Owner",
+      "at": "2026-09-27T08:31:22Z",
+      "conditions": [
+        "PM 把 OQ1-OQ10、C1/C2 共 12 条裁定折进各 REQ 验收标准",
+        "基线升版到 v1.1 并提交到同一 feature 分支",
+        "稳定编号不得重排、不得复用废弃编号",
+        "本次批准只对 v1.1 有效；实现中若裁定与代码冲突须回 G1 重新裁定，不得自行改需求"
+      ]
+    },
+    {
+      "gate": "G2",
+      "decision": "REJECTED",
+      "by": "Requirement Owner",
+      "at": "2026-09-27T14:17:20Z",
+      "blockingReason": "required_review_thread_resolution",
+      "detail": "真实阻塞项为 PR #17 上 6 条未解决的 qoderai 评审线程（github-lab.sh pr-status 17 原始 blockingReasons：required_review_thread_resolution: 6 条评审线程未解决）。此前把阻塞归因于 reviewDecision 为空属误诊：required_approving_review_count 已是 0，该维度不阻塞。",
+      "conditions": [
+        "Dev-Waker：VisitRecord.referer 保留 required 并补 nullable:true；删除旁路 NPE 特判重抛；50ms 超时移出 redirect 请求线程；交付说明按新架构修订（超时语义、线程池无界队列后续建议、缓存单锁与 O(n) 扫描、未经压测）",
+        "QA-Waker：补 REQ-B-5 独立验收证据（慢写不影响 302 与跳转预算）；复核 REQ-A-5 新增 schema 可空性的测试覆盖缺口",
+        "返修后重走 P5→P6→P7；对每条评审线程先以可核验证据回帖再 pr-resolve；收尾条件是每条线程都有一次裁定，不是意见数归零",
+        "G2 批准必须落在当前最新 SHA（dismiss_stale_reviews_on_push=true，推送会作废旧审查并触发 qoderai 重跑）"
+      ]
+    }
+  ],
+  "g2Rework": {
+    "status": "PUSHED_THREADS_ADJUDICATED",
+    "rejectedAt": "2026-09-27T14:17:20Z",
+    "strictRuling": "OQ7 严格口径：统计写入是旁路，redirect 请求线程根本不该为统计写入阻塞；不能有任何 future.get(50ms) 落在请求线程或 300ms 计量窗口内",
+    "baselineCommit": "0f8583c",
+    "reworkCommit": "8c42c51ec8ee59cf3b7cbc54043e68cabbf2d89d",
+    "reworkHeadSha": "a3ac4b510167146f5d0a3d64d04c38a27949eacc",
+    "commits": [
+      "8c42c51：返修四项（openapi nullable 契约 / 删除旁路 NPE 重抛 / 50ms 超时移入旁路 / 交付说明修订）",
+      "f3305d9：state.json 记录 G2 退回、真实阻塞原因与返修提交",
+      "a3ac4b5：采纳 qoderai 复审建议——VisitLogAwait 观测窗口 5s→15s，失败打印最后观测计数，断言强度不变"
+    ],
+    "localVerification": "mvn -B clean verify 全绿：38 tests / 0 failures；line coverage 88.76%（150/169）；Checkstyle 0；SpotBugs 0；schema gate 在内存库跑通 V1+V2",
+    "items": [
+      "openapi.yaml：VisitRecord.referer 保留 required + nullable:true + 缺失 Referer 属于正常流量且字段为 null 的说明",
+      "ShortlinkController：删除 recordVisitWithTimeout 与 NPE 特判重抛，redirect 只提交旁路写入",
+      "VisitLogService：recordAsync 改为 void，CompletableFuture.runAsync + orTimeout(50ms) + whenComplete，超时/失败只记 ERROR",
+      "测试：VisitLogTimeoutTest（慢写不影响 302 与预算 + 不取消）、VisitLogBypassFailureTest（旁路 NPE 仍 302）、OpenApiContractTest 可空性断言、5 处既有断言改为测试线程有界等待",
+      "交付说明：.devflow/issue-2/06-delivery/release-note.md（超时语义、无界队列建议、单锁与 O(n) 扫描、未经压测、referer 敏感性持续风险）"
+    ],
+    "threadAdjudication": {
+      "total": 16,
+      "unresolved": 0,
+      "adoptedWithCodeOrDocChange": [
+        "PRRT_kwDOUs8Szs6mbVcl（首轮，openapi VisitRecord 硬冲突；返修 1）",
+        "PRRT_kwDOUs8Szs6maOhO（首轮，openapi 契约与主链路语义；返修 1/2/3）",
+        "PRRT_kwDOUs8Szs6maFfl（首轮，openapi:119 契约错位；返修 1）",
+        "PRRT_kwDOUs8Szs6mbVdK（首轮，ShortlinkController:117 NPE 重抛；返修 2）",
+        "PRRT_kwDOUs8Szs6maFg_（首轮，ShortlinkController:111 超时语义；返修 3/4）",
+        "PRRT_kwDOUs8Szs6mbox9（复审，ShortlinkControllerTest:201 观测窗口不足；a3ac4b5 修复）"
+      ],
+      "adoptedAsDocumentedFollowup": [
+        "PRRT_kwDOUs8Szs6mbowL（复审，VisitLogService:125 无界队列/关闭语义；release-note §4 第 2 条）",
+        "PRRT_kwDOUs8Szs6mboxI（复审，openapi:135 统计接口无鉴权/referer 敏感；release-note §4 第 1 条，OQ10 口径）"
+      ],
+      "notReworkedWithRuling": [
+        "PRRT_kwDOUs8Szs6maFgl（首轮，CachingLinkResolver:44 单锁并发特性；Owner 裁定本期不返修，已写入 release-note §4 第 3 条）",
+        "PRRT_kwDOUs8Szs6mbouq（复审，CachingLinkResolver:65 单锁 + O(n) 扫描；同上裁定，写入 release-note §4 第 3 条）"
+      ],
+      "note": "每条线程均先回帖（可核验证据：commit/文件/测试名）再 pr-resolve 填理由；推送触发的重审共开 3 轮新线程（f3305d9 上 4 条、a3ac4b5 上 3 条、7f61270 上 0 条），当前 reviewThreads 16 total / 0 unresolved"
+    }
+  },
+  "p6": {
+    "status": "PASS",
+    "report": ".devflow/issue-2/06-qa/acceptance-report.md",
+    "reportHeadSha": "7f6127051b74321f4178805801dcd5e787c0e4e7",
+    "evidence": {
+      "source": "QA-Waker runtime HTTP observation on current working tree at 7f61270",
+      "summary": "REQ-A 1-6 PASS，REQ-B 1-8 PASS；OQ7 异步旁路、VisitRecord referer required + nullable、旁路失败 302、持续风险披露均复核；运行时错误探针确认 3020 字符 Referer 触发后台 ERROR 但主链路仍 302"
+    },
+    "note": "本报告替代旧版 P6 报告（验收对象 28aca2c / v1.1）；§1 已按 Owner 要求原样追加观察句：「本轮没有执行 Maven test/verify，改用运行时 HTTP 观察，CI 结论交给 DevOps。这个分工在三层审查设计下成立，但『P6 独立验收』的独立性因此落在行为轴上、不在构建轴上。」"
+  },
+  "blockedBy": {
+    "stage": "G2",
+    "state": "S6_CLEARED",
+    "clearedAt": "2026-09-27T15:50:00Z",
+    "clearedAtSha": "7f6127051b74321f4178805801dcd5e787c0e4e7",
+    "blockingReasons": [],
+    "reviewThreadsTotal": 16,
+    "unresolvedReviewThreads": 0,
+    "evidence": {
+      "source": "github-lab.sh pr-status 17（2026-09-27T15:50Z 读，SHA 7f61270）",
+      "raw": "{\"blockingReasons\":[],\"checks\":[{\"context\":\"mvn-verify\",\"runStatus\":\"COMPLETED\",\"state\":\"SUCCESS\",\"verdict\":\"pass\"},{\"context\":\"qoder-review\",\"runStatus\":\"COMPLETED\",\"state\":\"SUCCESS\",\"verdict\":\"pass\"}],\"mergeStateStatus\":\"CLEAN\",\"mergeable\":\"MERGEABLE\",\"reviewDecision\":null,\"reviewThreads\":{\"total\":16,\"unresolved\":0}}"
+    },
+    "history": {
+      "stage": "G2",
+      "state": "S6_MERGE_BLOCKED",
+      "blockedAtSha": "2e5f19ead18eebd635519109236d330afb9acc71",
+      "reasons": [
+        {
+          "source": "github-lab.sh pr-status 17",
+          "detail": "{\"blockingReasons\":[\"required_review_thread_resolution: 6 条评审线程未解决\"],\"checks\":[{\"context\":\"mvn-verify\",\"state\":\"SUCCESS\"},{\"context\":\"qoder-review\",\"state\":\"SUCCESS\"}],\"mergeStateStatus\":\"BLOCKED\",\"mergeable\":\"MERGEABLE\",\"reviewDecision\":null,\"reviewThreads\":{\"total\":9,\"unresolved\":6}}",
+          "mergeStateStatus": "BLOCKED",
+          "blockingReason": "required_review_thread_resolution",
+          "unresolvedReviewThreads": 6,
+          "headSha": "2e5f19ead18eebd635519109236d330afb9acc71"
+        }
+      ]
+    },
+    "note": "阻塞已解除；reviewDecision=null 不构成阻塞（required_approving_review_count=0，见 G2 退回裁定原文）。2026-09-27 15:50Z 在 SHA 7f61270 上 reviewThreads 16 total / 0 unresolved、blockingReasons 为空、qoderai 已给出 APPROVED。clearedAtSha 指向被验证的代码 SHA 7f61270，而非文档收口提交；文档提交（此前 5802564 及本次修正后的新 head）仅包含 acceptance-report.md / state.json 等 .devflow 产物，不含 src/ 或 pom.xml 等代码变更。state.json 不存储『交付 head』常量——合并前 head 可能继续移动，应从 PR 实时读取。",
+    "unblockPath": "已完成的解除路径：Dev 返修提交（8c42c51）→ 推送（f3305d9、a3ac4b5、7f61270）→ 新 SHA 的 mvn-verify 与 qoderai 审查自动触发 → 三轮共 16 条线程逐条回帖 + pr-resolve → blockingReasons 清空；QA-Waker 完成 P6 独立验收（PASS）并追加 Owner 要求的观察句。剩余路径：DevOps-Waker 在当前最新 SHA 上复读 pr-status → Lead-Waker 确认 blockingReasons=[] 后重新提交 G2，批准须落在当前最新 SHA。禁止手动 dispatch mvn-verify、禁止 dismiss review、禁止改动 .github/workflows/。"
+  },
+  "nextAction": "等待 DevOps-Waker 在当前最新 SHA 上复读 pr-status；随后由 Lead-Waker 主持 G2 重新提交并由 Requirement Owner 在当前最新 SHA 上批准。若 qoderai 重审开新线程，Dev-Waker 照旧逐条回帖 + pr-resolve。",
+  "createdAt": "2026-09-27T08:25:00Z",
+  "updatedAt": "2026-09-28T08:00:00Z"
+}
