@@ -3,7 +3,7 @@
   "title": "解析缓存加容量上限与 TTL；访问流水落库并提供统计查询接口",
   "relatedIssues": [3],
   "requirementOwner": "human/owner",
-  "currentPhase": "P4_MERGE_RESOLVED",
+  "currentPhase": "P6_ACCEPTED",
   "baselineVersion": "v1.1",
   "baselineBranch": "feature/issue-2-cache-ttl-and-visit-log",
   "mergeCommit": "671cca8",
@@ -22,7 +22,7 @@
     }
   ],
   "blockedBy": null,
-  "nextAction": "进入 P5 CI 门禁与独立验收",
+  "nextAction": "进入 P7 PR 创建与 G2 人工门禁；需 DevOps-Waker 对最终 SHA 重跑 jenkins/verify",
   "createdAt": "2026-09-27T08:25:00Z",
-  "updatedAt": "2026-09-27T11:00:22Z"
+  "updatedAt": "2026-09-27T11:24:12Z"
 }
