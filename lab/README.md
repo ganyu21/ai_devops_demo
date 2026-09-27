@@ -183,11 +183,27 @@ GL=./lab/scripts/github-lab.sh
 $GL pr-status <n>                       # 未解决线程含 threadId、path、line、意见摘录
 $GL pr-reply <threadId> <正文文件>       # 回帖裁定（长内容走文件，不进 argv）
 $GL pr-resolve <threadId> "<裁定理由>"   # 先回帖留痕，再标记已解决；回帖失败就不 resolve
+$GL pr-merge <n> --yes --approved-by "<G2 裁定出处>" [--method merge|squash|rebase]
 ```
 
-这三条此前只有第一条存在。也就是说团队**结构上不可能自己解除这个阻塞**——只能停在
-`S6_MERGE_BLOCKED`。那是工具缺口，不是治理设计；治理设计要的是「resolve 必须由裁定过的人做」，
-而不是「没人能 resolve」。
+这四条此前一条都不存在（`pr-status` 也只返回合并态、不返回线程）。也就是说团队**结构上不可能
+自己完成一次交付**——既解除不了阻塞，也合并不了。那是工具缺口，不是治理设计：治理要的是
+「resolve 与 merge 必须由裁定过的人做」，不是「没人能做」。
+
+`pr-merge` 把纪律做进了工具而不是指望调用方自觉，三道闸缺一条就拒绝执行：
+
+1. `--yes` —— 显式表明有意为之，不是脚本跑到这一行顺带做的；
+2. `--approved-by` —— G2 裁定的出处（谁批的、在哪条群消息或评论里）。不留出处的合并等于把
+   「人批准过」这个前提丢掉，事后无从追溯；
+3. **现场复核** `mergeStateStatus` 必须是 `CLEAN` 且未解决线程为 0 —— 用调用那一刻的实况，
+   不用调用方传进来的说法。合并后再回读 `state` / `mergedAt` / `mergeCommit`，
+   因为「合并命令返回 0」不等于「main 上真有那个提交」。
+
+四条拒绝路径都实测过：缺 `--yes`、缺 `--approved-by`、坏 `--method`、以及对一条 `BLOCKED`
+且带 7 条未解决线程的 PR 调用（返回 `NOT_CLEAN` 并把现场数值一并报出来）。
+实测另一条边界：**受限 PAT 能合并 PR**（`#20` 就是这么合的，merge commit `742166a`）——
+它做不到的是直推 `main`、改规则集、改 workflow。这条区别要在课上讲清楚，
+否则学员会以为「给了 Contents 写权限就等于能绕过治理」。
 
 `scripts/github-lab.sh pr-status <n>` 现在走 GraphQL 把每项规则的实况都拉出来，
 并**由脚本自己**推出 `blockingReasons`。「没有任何 APPROVED 审查」被单列进

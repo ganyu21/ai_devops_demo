@@ -23,6 +23,8 @@
 #   github-lab.sh pr-status <n>                    合并资格 + 未解决评审线程 + 由脚本推导的阻塞原因
 #   github-lab.sh pr-reply <threadId> <file>       回复一条评审线程（裁定意见写在文件里）
 #   github-lab.sh pr-resolve <threadId> <reason>   把一条评审线程标记为已解决（理由会先回帖留痕）
+#   github-lab.sh pr-merge <n> --yes --approved-by <出处> [--method merge|squash|rebase]
+#                                  合并（三道闸：显式 --yes、G2 裁定出处、现场复核 CLEAN 且 0 条未解决线程）
 #   github-lab.sh commit-status <sha>              该 SHA 上的 commit status 与 check run（两个都查）
 #   github-lab.sh ruleset                          main 的规则集（治理控制现状）
 #   github-lab.sh push <branch>                    推分支（用 PAT，不用机器上的仓主凭据）
@@ -105,7 +107,7 @@ case "$cmd" in
     "$GH" api graphql -f query="query{
       repository(owner:\"$owner\",name:\"$name\"){
         pullRequest(number:$n){
-          number mergeable mergeStateStatus reviewDecision
+          number mergeable mergeStateStatus reviewDecision headRefOid
           reviewThreads(first:100){nodes{
             id isResolved isOutdated path line
             comments(first:1){nodes{author{login} body}}
@@ -151,6 +153,7 @@ case "$cmd" in
       | ([ $pr.reviews.nodes[]? | select(.state=="APPROVED") | .author.login ]) as $approvals
       | {
           number: $pr.number,
+          headSha: $pr.headRefOid,
           mergeable: $pr.mergeable,
           mergeStateStatus: $pr.mergeStateStatus,
           reviewDecision: $pr.reviewDecision,
@@ -241,6 +244,55 @@ case "$cmd" in
       --jq '{statuses:[.[]|{context,state,description}]}'
     api "repos/$REPO/commits/$sha/check-runs" \
       --jq '{checkRuns:[.check_runs[]|{name,status,conclusion}]}'
+    ;;
+
+  pr-merge)
+    # 合并是整条交付里唯一不可逆的一步，所以把纪律做进工具，而不是指望调用方自觉。
+    # 三道闸，缺一条就拒绝执行：
+    #   1. --yes               显式表明这是有意为之，不是脚本跑到这一行顺带做的
+    #   2. --approved-by       G2 裁定的出处（谁、在哪条群消息/issue 评论里批的）。
+    #                          不留出处的合并等于把「人批准过」这个前提丢掉，事后无从追溯。
+    #   3. 现场复核 mergeStateStatus 必须是 CLEAN 且未解决评审线程为 0
+    #      —— 用调用时那一刻的实况，不用调用方传进来的说法。
+    n=""; yes=0; method="merge"; approved_by=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --yes) yes=1; shift ;;
+        --method) method="${2:?--method 需要 merge|squash|rebase}"; shift 2 ;;
+        --approved-by) approved_by="${2:?--approved-by 需要填 G2 裁定的出处}"; shift 2 ;;
+        -*) echo "{\"error\":\"BAD_FLAG\",\"detail\":\"不认得的参数：$1（可用 --yes / --method / --approved-by）\"}"; exit 2 ;;
+        *) [ -z "$n" ] && n="$1" && shift || { echo "{\"error\":\"BAD_ARGS\",\"detail\":\"多余的位置参数：$1\"}"; exit 2; } ;;
+      esac
+    done
+    case "$n" in ''|*[!0-9]*) echo '{"error":"BAD_PR_NUMBER","detail":"PR 号必须是纯数字"}'; exit 2 ;; esac
+    [ "$yes" = 1 ] || { echo '{"error":"NO_CONFIRM","detail":"合并不可逆，必须显式带 --yes"}'; exit 2; }
+    [ -n "$approved_by" ] || { echo '{"error":"NO_APPROVAL_REF","detail":"必须用 --approved-by 填 G2 裁定的出处（谁批的、在哪条消息或评论里），否则事后无从追溯这个合并的前提"}'; exit 2; }
+    case "$method" in merge|squash|rebase) ;; *) echo '{"error":"BAD_METHOD","detail":"--method 只能是 merge|squash|rebase"}'; exit 2 ;; esac
+
+    self="$HERE/$(basename "${BASH_SOURCE[0]}")"
+    verdict="$("$self" pr-status "$n" 2>/dev/null)"
+    gate="$(printf '%s' "$verdict" | python3 -c "
+import json,sys
+try: d=json.load(sys.stdin)
+except Exception: print('PARSE_FAIL'); raise SystemExit
+ms=d.get('mergeStateStatus'); un=(d.get('reviewThreads') or {}).get('unresolved')
+sha=(d.get('headSha') or '')
+print('%s|%s|%s' % (ms, un, sha))
+" 2>/dev/null)"
+    case "$gate" in
+      CLEAN\|0\|*) ;;
+      PARSE_FAIL) echo '{"error":"STATUS_UNREADABLE","detail":"拿不到 pr-status 的结论，因此不合并——看不清就不动，别赌"}'; exit 3 ;;
+      *)
+        printf '{"error":"NOT_CLEAN","detail":"现场复核不通过：mergeStateStatus/未解决线程数 = %s。合并只在 CLEAN 且 0 条未解决线程时执行。先看 pr-status %s 的 blockingReasons，不要绕过这一条。"}\n' "$gate" "$n"
+        exit 3 ;;
+    esac
+    "$GH" pr merge "$n" --repo "$REPO" --"$method" 2>&1 | tail -5
+    rc=$?
+    # 合并成功不等于 main 上真的有那个提交。必须回读 origin/main，
+    # 否则「已交付」就是一个没有证据的断言——这正是首轮交付要防的那个错。
+    if [ "$rc" = 0 ]; then
+      "$GH" pr view "$n" --repo "$REPO" --json state,mergedAt,mergeCommit         --jq '{number:'"$n"',state,mergedAt,mergeCommit:.mergeCommit.oid,approvedBy:"'"$approved_by"'",method:"'"$method"'"}'
+    fi
     ;;
 
   ruleset)

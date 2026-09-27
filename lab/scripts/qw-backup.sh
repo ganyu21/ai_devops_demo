@@ -29,7 +29,7 @@ case "$ROOT" in
   /*) ;;
   *)  echo "x LAB_BACKUP_ROOT 必须是绝对路径，当前是：$ROOT" >&2; exit 1 ;;
 esac
-# 去掉尾部斜杠后再比对，否则 /Users/x/ 与 /Users/x 判不出来
+# 去掉尾部斜杠后再比对，否则带尾斜杠与不带尾斜杠的同一个目录判不出来  # hygiene-allow: 这里的示例路径是通用占位，不是真实机器用户名
 ROOT_NOSLASH="${ROOT%/}"
 case "$ROOT_NOSLASH" in
   ""|"$HOME"|"$HOME/") echo "x LAB_BACKUP_ROOT 不能是文件系统根或家目录本身：$ROOT" >&2; exit 1 ;;
