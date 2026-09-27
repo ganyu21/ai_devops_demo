@@ -19,7 +19,7 @@ public class VisitLogService {
     private final List<VisitRecord> records = Collections.synchronizedList(new ArrayList<>());
 
     public void record(String code, String referer) {
-        String normalized = referer.toLowerCase(Locale.ROOT);
+        String normalized = referer == null ? null : referer.toLowerCase(Locale.ROOT);
         records.add(new VisitRecord(code, normalized, Instant.now()));
     }
 
