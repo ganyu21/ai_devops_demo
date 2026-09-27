@@ -44,9 +44,9 @@
 | --- | --- | --- |
 | Jenkins 门禁（历史有效） | ✅ | build 15，`gateVerdict=GREEN`；tests 35/0/0；jacoco.line=83.83%；checkstyle=0；spotbugs=0 |
 | commit status 已回写 | ✅ | context `jenkins/verify`，state `success`，SHA `28aca2cd6d7c57fd2968b2587d0ada8659d4a49b` |
-| GitHub Actions `mvn-verify` check run（G2/P7 引用口径） | ⏳ | 返修前 HEAD（`2e5f19e`）为 `SUCCESS`；**返修推送后必须取新 SHA 的结论**，旧结论不代表返修后代码 |
+| GitHub Actions `mvn-verify` check run（G2/P7 引用口径） | ✅ | 返修后 HEAD `a3ac4b5`：`COMPLETED/SUCCESS`（自动触发，未手动 dispatch；`github-lab.sh pr-status 17` 读取） |
 | 门禁结论文档已提交 | ✅ | `.devflow/issue-2/05-gate/p5-ci-verdict.md`（已注明 CI 载体变更） |
-| P5 复验（G2 返修后） | ⏳ | 待返修提交推送 → GitHub Actions 自动触发 `mvn-verify` → 由 DevOps-Waker 用 `github-lab.sh pr-status` 复核 |
+| P5 复验（G2 返修后） | ✅（Dev 侧读数） | `a3ac4b5` 上 `mvn-verify` 与 `qoder-review` 均 `COMPLETED/SUCCESS`，`blockingReasons=[]`、`mergeStateStatus=CLEAN`；**DevOps-Waker 的正式复核读数见其独立回报** |
 
 ## P6 独立验收
 
@@ -58,7 +58,9 @@
 
 ## qoderai 自动审查与 G1 基线对照
 
-G2 时 PR #17 上有 6 条未解决线程（`github-lab.sh pr-status 17`：`blockingReasons=["required_review_thread_resolution: 6 条评审线程未解决"]`）。逐条裁定如下，返修项对应 `impl-report.md` 的 G2 返修记录：
+G2 时 PR #17 上有 6 条未解决线程（`github-lab.sh pr-status 17`：`blockingReasons=["required_review_thread_resolution: 6 条评审线程未解决"]`）。返修推送后 qoderai 重审共开两轮新线程（`f3305d9` 上 4 条、`a3ac4b5` 上 0 条），三轮合计 13 条线程全部逐条裁定并 `pr-resolve`，当前 `reviewThreads: 13 total / 0 unresolved`。逐条裁定如下，返修项对应 `impl-report.md` 的 G2 返修记录：
+
+### 首轮 6 条（G2 退回时的阻塞项）
 
 | threadId | 位置 | 意见摘要 | 与 v1.2 基线关系 | 处理 |
 | --- | --- | --- | --- | --- |
@@ -68,6 +70,15 @@ G2 时 PR #17 上有 6 条未解决线程（`github-lab.sh pr-status 17`：`bloc
 | `PRRT_kwDOUs8Szs6mbVdK` | ShortlinkController.java:117 | NPE 特判重抛违背 OQ8 与 AGENTS.md 审查红线 | 与基线一致（旁路故障不得放大成 5xx；#3 合并后该分支已不可达） | 采纳：删除该分支（返修 2） |
 | `PRRT_kwDOUs8Szs6maFg_` | ShortlinkController.java:111 | 超时只录日志不 cancel；语义未说明；同步等待落在请求线程 | 与 OQ7 严格口径（v1.2）一致 | 采纳：50ms 超时移入旁路 + 语义写入 release-note（返修 3、4） |
 | `PRRT_kwDOUs8Szs6maFgl` | CachingLinkResolver.java:44 | 单锁串行化、O(n) 过期扫描的并发特性 | 不冲突；Owner 已裁定本期不返修 | **不返修**：按裁定把三件事写入 release-note 第 4 节（单锁、O(n) 扫描放大锁持有、**未经压测**） |
+
+### 第二轮 4 条（返修推送 `f3305d9` 后重审新增，`a3ac4b5` 中处理）
+
+| threadId | 位置 | 意见摘要 | 处理 |
+| --- | --- | --- | --- |
+| `PRRT_kwDOUs8Szs6mbouq` | CachingLinkResolver.java:65 | 单锁 + `cachedEntries()` 持锁 O(n) 扫描，规模大时拉长持锁时间 | **不返修**（Owner 已裁定）：单锁并发特性、O(n) 扫描放大锁持有、**未经压测** 三点写入 release-note §4 第 3 条，并列出后续优化方向；回帖 + resolve |
+| `PRRT_kwDOUs8Szs6mbowL` | VisitLogService.java:125 | 无界队列无背压、关闭语义（`shutdownNow` 可能丢弃排队写入） | 采纳为**文档化后续项**：release-note §4 第 2 条（有界队列 + 拒绝策略 + 队列长度监控、关闭只有日志）；本期不返修，回帖 + resolve |
+| `PRRT_kwDOUs8Szs6mboxI` | openapi.yaml:135 | 统计接口无鉴权 + referer 敏感性 | 与 **OQ10** 既有裁定一致：接受风险并文档化（接口可见范围、未来字段分级鉴权/脱敏），release-note §4 第 1 条；回帖 + resolve |
+| `PRRT_kwDOUs8Szs6mbox9` | ShortlinkControllerTest.java:201 | `VisitLogAwait` 5s 观测窗口在高频跳转 + 异步写入下仍可能不足（5 条只观测到 4 条） | **采纳并修复**（提交 `a3ac4b5`）：窗口 5s→15s，失败打印最后观测计数并区分「窗口超时 ≠ 请求线程阻塞」；断言强度不变；回帖 + resolve |
 
 处理纪律：先以可核验证据（commit / 文件 / 测试名）在对应线程回帖，再用 `pr-resolve` 写明理由；推送会触发 qoderai 重跑，可能产生新线程，同样逐条裁定——收尾条件是「每条线程都有一次裁定」，不是「意见数归零」。
 
@@ -83,10 +94,11 @@ G2 时 PR #17 上有 6 条未解决线程（`github-lab.sh pr-status 17`：`bloc
 | 检查项 | 结论 | 证据 |
 | --- | --- | --- |
 | G2 首次提交 | ❌ 退回返修 | Requirement Owner 于 2026-09-27 驳回：真实阻塞 `required_review_thread_resolution`（6 条线程）；另裁 OQ7 严格口径并给出返修清单 |
-| G2 重新提交 | ⏳ | 待返修提交推送、P5/P6/P7 复验完成后由 Lead-Waker 主持 |
+| G2 重新提交 | ⏳ | 待 QA-Waker P6 复验、DevOps-Waker P5 复核后由 Lead-Waker 主持；批准须落在当前最新 SHA |
 
 ## 合并资格结论
 
-- 当前状态：**G2 返修已提交（代码/测试/文档）**；6 条评审线程按表逐条回帖 + `pr-resolve`；待新 SHA 的 `mvn-verify`、qoderai 重审结果与 P6 复验
-- 是否满足合并资格：⏳ 待上述复验完成后核定；6 条线程已有裁定，重审若产生新线程同样逐条裁定
+- 当前状态：**返修已推送、评审线程已全部裁定**；提交 `a3ac4b5` 上 `blockingReasons=[]`、`mergeStateStatus=CLEAN`、`mvn-verify` 与 `qoder-review` 均 `COMPLETED/SUCCESS`、`reviewThreads` 13 total / 0 unresolved
+- 是否满足合并资格：⏳ 机器门禁与线程维度均已清；**待 P6 独立验收重做**（REQ-B-5 预算维度、REQ-A-5 可空性、旁路 NPE 仍 302）与 DevOps 复核后核定
+- 后续任何推送都会作废旧审查并触发 qoderai 重跑（`dismiss_stale_reviews_on_push=true`）；若重审再开新线程，照旧逐条回帖 + `pr-resolve`
 - 若不满足，阻塞项与解除路径见 `.devflow/issue-2/05-gate/merge-block-criteria.md`

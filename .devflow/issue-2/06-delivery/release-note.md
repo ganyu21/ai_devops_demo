@@ -48,9 +48,10 @@
 | --- | --- |
 | 本地 `mvn -B clean verify`（返修后） | ✅ 38 tests / 0 failures；line coverage 88.76%（阈值 0.60）；Checkstyle 0；SpotBugs 0；schema gate 在内存库跑通 V1+V2 |
 | Jenkins build 15（返修前历史结论） | ✅ `gateVerdict=GREEN`，35/0/0，jacoco.line=83.83%——**返修后不再作为最终口径** |
-| GitHub Actions `mvn-verify`（新 SHA） | ⏳ 推送后自动触发，由 DevOps-Waker 以 `github-lab.sh pr-status` 读取 `status=completed 且 conclusion=success` |
-| qoderai 重审（新 SHA） | ⏳ 推送触发重跑；每条评审线程需有一次裁定（回帖 + `pr-resolve`），不要求意见数归零 |
-| P6 独立验收 | ⏳ QA-Waker 重做（含 REQ-B-5 预算维度证据、REQ-A-5 新增 schema 可空性复核） |
+| GitHub Actions `mvn-verify`（本文件提交所在 SHA） | ✅ 自动触发并完成：`state=SUCCESS`（提交 `a3ac4b5`，`github-lab.sh pr-status` 读取） |
+| qoderai 审查（提交 `a3ac4b5`） | ✅ `COMPLETED/SUCCESS`；`reviewThreads` 13 total / 0 unresolved；三轮全部线程逐条回帖 + `pr-resolve`（判定见 `cr-checklist.md` 对照表） |
+| 合并资格（提交 `a3ac4b5`） | ✅ `blockingReasons=[]`、`mergeStateStatus=CLEAN`、`mergeable=MERGEABLE`（`reviewDecision=null` 不构成阻塞：`required_approving_review_count` 为 0） |
+| P6 独立验收 | ⏳ QA-Waker 重做（含 REQ-B-5 预算维度证据、REQ-A-5 新增 schema 可空性复核）——须落在此 SHA 或其后最新 SHA |
 
 ## 7. 未覆盖点（分类，见 `02-dev/impl-report.md` 明细）
 
