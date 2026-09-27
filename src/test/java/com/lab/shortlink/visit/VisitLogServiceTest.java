@@ -4,7 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.lab.shortlink.visit.VisitLogService.VisitRecord;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 访问流水的单元测试。
@@ -16,35 +20,39 @@ import org.junit.jupiter.api.Test;
  *
  * <p>本类不描述那条路径当前的行为——描述了就等于替分诊环节把答案写出来。
  */
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
+@Transactional
 class VisitLogServiceTest {
 
-    private final VisitLogService visitLog = new VisitLogService();
+    @Autowired
+    private VisitLogService visitLog;
 
     @Test
     void recordNormalizesTheRefererToLowerCase() {
         visitLog.record("Aa11Bb22", "HTTPS://Example.COM/Landing");
 
-        assertThat(visitLog.snapshot())
+        assertThat(visitLog.findRecentByCode("Aa11Bb22", 10))
                 .singleElement()
                 .extracting(VisitRecord::referer)
                 .isEqualTo("https://example.com/landing");
     }
 
     @Test
-    void snapshotPreservesInsertionOrder() {
+    void findRecentByCodeReturnsRecordsInReverseChronologicalOrder() throws InterruptedException {
         visitLog.record("Aa11Bb22", "https://example.com/first");
-        visitLog.record("Cc33Dd44", "https://example.com/second");
+        TimeUnit.MILLISECONDS.sleep(10);
+        visitLog.record("Aa11Bb22", "https://example.com/second");
 
-        assertThat(visitLog.snapshot())
-                .extracting(VisitRecord::code)
-                .containsExactly("Aa11Bb22", "Cc33Dd44");
+        assertThat(visitLog.findRecentByCode("Aa11Bb22", 10))
+                .extracting(VisitRecord::referer)
+                .containsExactly("https://example.com/second", "https://example.com/first");
     }
 
     @Test
-    void snapshotCannotBeUsedToMutateTheLog() {
+    void findRecentByCodeReturnsAnUnmodifiableList() {
         visitLog.record("Aa11Bb22", "https://example.com/first");
 
-        assertThatThrownBy(() -> visitLog.snapshot().add(
+        assertThatThrownBy(() -> visitLog.findRecentByCode("Aa11Bb22", 10).add(
                 new VisitRecord("Forged", "https://example.com/forged", java.time.Instant.now())))
                 .isInstanceOf(UnsupportedOperationException.class);
         assertThat(visitLog.size()).isEqualTo(1);
@@ -57,5 +65,14 @@ class VisitLogServiceTest {
         visitLog.record("Cc33Dd44", "https://example.com/c");
 
         assertThat(visitLog.size()).isEqualTo(3);
+    }
+
+    @Test
+    void findRecentByCodeLimitsTheResultSet() {
+        visitLog.record("Aa11Bb22", "https://example.com/1");
+        visitLog.record("Aa11Bb22", "https://example.com/2");
+        visitLog.record("Aa11Bb22", "https://example.com/3");
+
+        assertThat(visitLog.findRecentByCode("Aa11Bb22", 2)).hasSize(2);
     }
 }

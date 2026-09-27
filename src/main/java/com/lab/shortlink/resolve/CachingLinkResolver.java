@@ -1,42 +1,114 @@
 package com.lab.shortlink.resolve;
 
+import com.lab.shortlink.config.ShortlinkProperties;
 import com.lab.shortlink.link.LinkStore;
 import com.lab.shortlink.link.ShortLink;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
  * 带解析缓存的链接解析器。
  *
- * <p>当前实现有两个<b>已知缺陷</b>，它们是需求单要解决的对象，在需求实现之前必须保持现状：
- *
- * <ol>
- *   <li>缓存没有容量上限，条目也不会过期。每一个被访问过的短码都会在堆里留一条记录，
- *       长期运行就是慢性内存泄漏。
- *   <li>目标地址被更正之后，缓存里的旧条目仍然生效，访问者会一直被跳到旧地址，
- *       直到进程重启。
- * </ol>
+ * <p>缓存具备可配置的容量上限、TTL 与 LRU 淘汰策略；在保存/更正链接的写路径上
+ * 主动失效对应短码的缓存条目，保证目标地址更新后能尽快生效。
  */
 @Component
 public class CachingLinkResolver implements LinkResolver {
 
-    private final ConcurrentMap<String, Optional<ShortLink>> cache = new ConcurrentHashMap<>();
-
     private final LinkStore store;
 
-    public CachingLinkResolver(LinkStore store) {
+    private final Duration ttl;
+
+    private final Object lock = new Object();
+
+    private final LruCache cache;
+
+    @Autowired
+    public CachingLinkResolver(LinkStore store, ShortlinkProperties properties) {
+        this(store, properties.getResolve().getCache().getMaxSize(),
+                Duration.ofMinutes(properties.getResolve().getCache().getTtlMinutes()));
+    }
+
+    CachingLinkResolver(LinkStore store, int maxSize, Duration ttl) {
         this.store = store;
+        this.ttl = ttl;
+        this.cache = new LruCache(maxSize);
     }
 
     @Override
     public Optional<ShortLink> resolve(String code) {
-        return cache.computeIfAbsent(code, store::findByCode);
+        synchronized (lock) {
+            CacheEntry entry = cache.get(code);
+            if (entry != null) {
+                if (Instant.now().isBefore(entry.expiresAt)) {
+                    return entry.link;
+                }
+                cache.remove(code);
+            }
+            Optional<ShortLink> link = store.findByCode(code);
+            cache.put(code, new CacheEntry(link, Instant.now().plus(ttl)));
+            return link;
+        }
     }
 
     @Override
     public int cachedEntries() {
-        return cache.size();
+        synchronized (lock) {
+            cache.removeExpired();
+            return cache.size();
+        }
+    }
+
+    @Override
+    public void invalidate(String code) {
+        synchronized (lock) {
+            cache.remove(code);
+        }
+    }
+
+    private static final class LruCache extends LinkedHashMap<String, CacheEntry> {
+
+        private static final long serialVersionUID = 1L;
+
+        private final int maxSize;
+
+        private LruCache(int maxSize) {
+            super(16, 0.75f, true);
+            this.maxSize = maxSize;
+        }
+
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, CacheEntry> eldest) {
+            return size() > maxSize;
+        }
+
+        private void removeExpired() {
+            Instant now = Instant.now();
+            Iterator<Map.Entry<String, CacheEntry>> iterator = entrySet().iterator();
+            while (iterator.hasNext()) {
+                Map.Entry<String, CacheEntry> next = iterator.next();
+                if (!now.isBefore(next.getValue().expiresAt)) {
+                    iterator.remove();
+                }
+            }
+        }
+    }
+
+    private static final class CacheEntry {
+
+        private final Optional<ShortLink> link;
+
+        private final Instant expiresAt;
+
+        private CacheEntry(Optional<ShortLink> link, Instant expiresAt) {
+            this.link = link;
+            this.expiresAt = expiresAt;
+        }
     }
 }

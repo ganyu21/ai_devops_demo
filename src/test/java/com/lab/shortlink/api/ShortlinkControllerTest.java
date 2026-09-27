@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lab.shortlink.visit.VisitLogService;
 import com.lab.shortlink.visit.VisitLogService.VisitRecord;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -103,10 +104,10 @@ class ShortlinkControllerTest {
         mockMvc.perform(get("/" + code).header(HttpHeaders.REFERER, "HTTPS://Example.COM/Search?Q=1"))
                 .andExpect(status().isFound());
 
-        assertThat(visitLog.snapshot())
-                .filteredOn(record -> record.code().equals(code))
+        assertThat(visitLog.findRecentByCode(code, 10))
+                .singleElement()
                 .extracting(VisitRecord::referer)
-                .containsExactly("https://example.com/search?q=1");
+                .isEqualTo("https://example.com/search?q=1");
     }
 
     @Test
@@ -122,5 +123,66 @@ class ShortlinkControllerTest {
         mockMvc.perform(get("/" + body.code()).header(HttpHeaders.REFERER, REFERER))
                 .andExpect(status().isFound())
                 .andExpect(header().string(HttpHeaders.LOCATION, "https://example.com/end-to-end"));
+    }
+
+    @Test
+    void visitsEndpointReturnsRecentVisitsInReverseChronologicalOrder() throws Exception {
+        String code = createLink("https://example.com/visits-target");
+
+        mockMvc.perform(get("/" + code).header(HttpHeaders.REFERER, "https://example.com/source-a"))
+                .andExpect(status().isFound());
+        mockMvc.perform(get("/" + code).header(HttpHeaders.REFERER, "https://example.com/source-b"))
+                .andExpect(status().isFound());
+
+        MvcResult result = mockMvc.perform(get("/api/links/" + code + "/visits"))
+                .andExpect(status().isOk())
+                .andReturn();
+        List<VisitRecord> visits = objectMapper.readValue(
+                result.getResponse().getContentAsString(),
+                objectMapper.getTypeFactory().constructCollectionType(List.class, VisitRecord.class));
+
+        assertThat(visits).hasSize(2);
+        assertThat(visits).extracting(VisitRecord::referer)
+                .containsExactly("https://example.com/source-b", "https://example.com/source-a");
+    }
+
+    @Test
+    void visitsEndpointRespectsTheLimitParameter() throws Exception {
+        String code = createLink("https://example.com/visits-limit-target");
+
+        mockMvc.perform(get("/" + code).header(HttpHeaders.REFERER, "https://example.com/1"))
+                .andExpect(status().isFound());
+        mockMvc.perform(get("/" + code).header(HttpHeaders.REFERER, "https://example.com/2"))
+                .andExpect(status().isFound());
+        mockMvc.perform(get("/" + code).header(HttpHeaders.REFERER, "https://example.com/3"))
+                .andExpect(status().isFound());
+
+        MvcResult result = mockMvc.perform(get("/api/links/" + code + "/visits?limit=2"))
+                .andExpect(status().isOk())
+                .andReturn();
+        List<VisitRecord> visits = objectMapper.readValue(
+                result.getResponse().getContentAsString(),
+                objectMapper.getTypeFactory().constructCollectionType(List.class, VisitRecord.class));
+
+        assertThat(visits).hasSize(2);
+    }
+
+    @Test
+    void visitsEndpointCapsLimitAtTheHardMaximum() throws Exception {
+        String code = createLink("https://example.com/visits-max-target");
+
+        for (int i = 0; i < 5; i++) {
+            mockMvc.perform(get("/" + code).header(HttpHeaders.REFERER, "https://example.com/" + i))
+                    .andExpect(status().isFound());
+        }
+
+        MvcResult result = mockMvc.perform(get("/api/links/" + code + "/visits?limit=999"))
+                .andExpect(status().isOk())
+                .andReturn();
+        List<VisitRecord> visits = objectMapper.readValue(
+                result.getResponse().getContentAsString(),
+                objectMapper.getTypeFactory().constructCollectionType(List.class, VisitRecord.class));
+
+        assertThat(visits).hasSize(5);
     }
 }
