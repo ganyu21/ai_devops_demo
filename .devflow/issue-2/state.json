@@ -3,10 +3,25 @@
   "title": "解析缓存加容量上限与 TTL；访问流水落库并提供统计查询接口",
   "relatedIssues": [3],
   "requirementOwner": "human/owner",
-  "currentPhase": "P1_G1_PENDING",
+  "currentPhase": "P1_G1_APPROVED",
+  "baselineVersion": "v1.1",
   "baselineBranch": "feature/issue-2-cache-ttl-and-visit-log",
-  "gateDecisions": [],
-  "blockedBy": "等待 Requirement Owner 对 10 条 Open Question 与 2 条 Conflict 给出带内容的裁定",
+  "gateDecisions": [
+    {
+      "gate": "G1",
+      "decision": "APPROVED",
+      "by": "Requirement Owner",
+      "at": "2026-09-27T08:31:22Z",
+      "conditions": [
+        "PM 把 OQ1-OQ10、C1/C2 共 12 条裁定折进各 REQ 验收标准",
+        "基线升版到 v1.1 并提交到同一 feature 分支",
+        "稳定编号不得重排、不得复用废弃编号",
+        "本次批准只对 v1.1 有效；实现中若裁定与代码冲突须回 G1 重新裁定，不得自行改需求"
+      ]
+    }
+  ],
+  "blockedBy": null,
+  "nextAction": "等待 Lead-Waker 将任务路由给 Dev-Waker 进入 P2",
   "createdAt": "2026-09-27T08:25:00Z",
-  "updatedAt": "2026-09-27T08:25:00Z"
+  "updatedAt": "2026-09-27T08:35:00Z"
 }
