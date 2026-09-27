@@ -68,6 +68,10 @@ gateVerdict=GREEN
 
 回写成功，context `jenkins/verify` 状态为 `success`。
 
+## CI 载体变更说明
+
+流程已更新：P5 由本地 Jenkins `ai-devops-demo-verify` job 完成的结果（build 15）仍然有效；G2/P7 阶段统一以 GitHub Actions `mvn-verify` check run 为引用口径，`pr-status` 需同时看 check state 与 qoderai `reviewDecision`。禁止手动 dispatch、禁止 dismiss qoderai review、禁止改动 `.github/workflows/`。
+
 ## 自愈轮次
 
 本次 P5 无需代码自愈轮次。门禁一次通过。

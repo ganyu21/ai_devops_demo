@@ -42,9 +42,10 @@
 
 | 检查项 | 结论 | 证据 / 备注 |
 | --- | --- | --- |
-| `jenkins/verify` 门禁通过 | ✅ | build 15，`gateVerdict=GREEN`；tests 35/0/0；jacoco.line=83.83%；checkstyle=0；spotbugs=0 |
+| Jenkins 门禁（历史有效） | ✅ | build 15，`gateVerdict=GREEN`；tests 35/0/0；jacoco.line=83.83%；checkstyle=0；spotbugs=0 |
 | commit status 已回写 | ✅ | context `jenkins/verify`，state `success`，SHA `28aca2cd6d7c57fd2968b2587d0ada8659d4a49b` |
-| 门禁结论文档已提交 | ✅ | `.devflow/issue-2/05-gate/p5-ci-verdict.md` |
+| GitHub Actions `mvn-verify` check run（G2/P7 引用口径） | ⏳ | 待 PR 创建/更新后由 GitHub Actions 生成；要求 `status=completed` 且 `conclusion=success` |
+| 门禁结论文档已提交 | ✅ | `.devflow/issue-2/05-gate/p5-ci-verdict.md`（已注明 CI 载体变更） |
 
 ## P6 独立验收
 
@@ -64,7 +65,8 @@
 1. qoderai `reviewDecision` 为合并资格维度，`dismiss` 不可用；修完推送会触发重跑。
 2. qoderai 意见若与 G1 基线冲突，以 G1 基线为准，并在 G2 现场由 Requirement Owner 裁定。
 3. G2 批准绑定到具体 SHA；批准后推送新提交则批准失效。
-4. P5 的 `jenkins/verify` 状态绑定在 SHA `28aca2c` 上；提交 P6/P7 产物后 HEAD 前移，需 DevOps-Waker 对最终 SHA 重跑门禁后再进 G2。
+4. P5 的 Jenkins `jenkins/verify` 状态仍有效，但 G2/P7 以 GitHub Actions `mvn-verify` check run 为引用口径；提交 P6/P7 产物后 HEAD 前移，需 DevOps-Waker 确认最终 SHA 的 `mvn-verify` check 与 qoderai `reviewDecision` 均通过后再进 G2。
+5. 禁止手动 dispatch `mvn-verify`、禁止 dismiss qoderai review、禁止改动 `.github/workflows/`。
 
 ## 人工门禁 G2
 
@@ -74,6 +76,6 @@
 
 ## 合并资格结论
 
-- 当前状态：P6 验收通过；P7 PR 已创建；待最终 SHA 的 `jenkins/verify`、qoderai `reviewDecision` 与 G2 人工批准
+- 当前状态：P6 验收通过；P7 PR 已创建；待最终 SHA 的 GitHub Actions `mvn-verify` check run、qoderai `reviewDecision` 与 G2 人工批准
 - 是否满足合并资格：⏳ 待 G2 与最终状态检查完成后核定
 - 若不满足，阻塞项与解除路径见 `.devflow/issue-2/05-gate/merge-block-criteria.md`
