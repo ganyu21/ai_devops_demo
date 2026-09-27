@@ -9,8 +9,8 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-QW="${QODERWAKE_BIN:-$HOME/.qoderwake/qoderwake}"
-NODE="${NODE_BIN:-/opt/homebrew/bin/node}"
+# shellcheck source=env.sh
+. "$HERE/env.sh"
 CHECK=0
 [ "${1:-}" = "--check" ] && CHECK=1
 
@@ -111,10 +111,14 @@ PY
   elif [ "$merged" = "READ_FAIL" ]; then
     echo "  x $name 读不到现有 permission 配置，跳过（不整份覆盖，避免冲掉本机已有条目）"
   else
-    printf '%s' "$merged" > /tmp/fg-$id.json
-    "$QW" permission patch file-guard --waker-id "$id" --json-file /tmp/fg-$id.json >/dev/null 2>&1 \
+    # 用 mktemp 而不是 /tmp/fg-$id.json：可预测的 /tmp 路径谁都能先占，
+    # 而这个文件的内容随后会被 daemon 当成权限配置读进去。
+    fgf="$(mktemp -t fg-$id.XXXXXX)" || { echo "  x $name 无法创建临时文件"; continue; }
+    chmod 600 "$fgf"
+    printf '%s' "$merged" > "$fgf"
+    "$QW" permission patch file-guard --waker-id "$id" --json-file "$fgf" >/dev/null 2>&1 \
       && echo "  ok $name 黑名单已合并" || echo "  x $name patch 失败"
-    rm -f /tmp/fg-$id.json
+    rm -f "$fgf"
   fi
 done
 
@@ -122,7 +126,10 @@ echo "== 3) SOP JSON =="
 if [ "$CHECK" = 1 ]; then
   [ -f "$HERE/sop/github-lab-group-delivery.json" ] && echo "  ok 已构建" || echo "  - 尚未构建"
 else
-  "$NODE" "$HERE/sop/build-sop.js" "${SOP_VERSION:-1.0.0}" 2>&1 | sed 's/^/  /'
+  # 版本一律取 env.sh 的 LAB_SOP_VERSION。原来这里默认 1.0.0，
+  # 而 sop/github-lab-group-delivery.json 是构建产物——跑一次 install.sh 就会把
+  # 已构建好的 1.0.3 悄悄覆盖成 1.0.0，然后 publish 出去一个版本倒退的 release。
+  "$NODE" "$HERE/sop/build-sop.js" "${SOP_VERSION:-$LAB_SOP_VERSION}" 2>&1 | sed 's/^/  /'
 fi
 
 cat <<'EOF'
