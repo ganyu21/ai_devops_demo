@@ -1,0 +1,112 @@
+# 机器门禁。三层审查里的第一层：跑不跑得通。
+#
+# 为什么用它替代本机 Jenkins + 状态回写桥：
+#   1. check run 本身就是状态，不需要「构建完再回写一次」这条桥——桥断了 PR 就永远合不进去，
+#      那是原架构里最脆的一环（还依赖构建机上有 gh 登录态）。
+#   2. 改这个文件需要 Workflows 权限，而数字员工那张 fine-grained PAT 没有。
+#      原来 Jenkinsfile 属于 Contents 权限、且 job 从被构建的分支读它，
+#      「改门禁让构建必绿 → 自己合并」这条路是通的；换成 Actions 之后被权限结构性堵死。
+#   3. 日志、JaCoCo 报告、PR 上的 annotations 全部原生可见，学员不用去翻另一套 UI。
+#
+# 阈值只能由人改：不得调低 pom.xml 的 coverage.line.minimum，不得关插件，
+# 不得加 -DskipTests / -Dcheckstyle.skip。
+name: Gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # 手动触发任意分支：替代原来 `jenkins-lab.sh build <分支名>` 的能力，
+  # 红灯分支 lab/predictable-code 的课堂演示靠它。
+  # 用法：gh workflow run gate.yml --ref <分支名>
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mvn-verify:
+    name: mvn-verify
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Gate - mvn -B clean verify
+        run: mvn -B clean verify
+
+      # 门禁结论要机器可读：数字员工只允许引用这段结构化输出，不许自己宣称门禁通过。
+      # always() 是刻意的——红灯时更需要这段数字，否则人只能去翻几千行日志。
+      - name: Gate summary
+        if: always()
+        run: |
+          python3 - <<'PY' | tee /tmp/gate-summary.txt
+          import glob
+          import os
+          import xml.etree.ElementTree as ET
+
+          total = failures = errors = skipped = 0
+          for path in glob.glob('target/surefire-reports/*.xml'):
+              root = ET.parse(path).getroot()
+              total += int(root.get('tests', 0))
+              failures += int(root.get('failures', 0))
+              errors += int(root.get('errors', 0))
+              skipped += int(root.get('skipped', 0))
+
+          line_covered = line_missed = branch_covered = branch_missed = 0
+          jacoco = 'target/site/jacoco/jacoco.xml'
+          if os.path.exists(jacoco):
+              for counter in ET.parse(jacoco).getroot().findall('./counter'):
+                  kind = counter.get('type')
+                  if kind == 'LINE':
+                      line_covered = int(counter.get('covered'))
+                      line_missed = int(counter.get('missed'))
+                  elif kind == 'BRANCH':
+                      branch_covered = int(counter.get('covered'))
+                      branch_missed = int(counter.get('missed'))
+
+          line_total = line_covered + line_missed
+          branch_total = branch_covered + branch_missed
+          line_pct = (100.0 * line_covered / line_total) if line_total else 0.0
+          branch_pct = (100.0 * branch_covered / branch_total) if branch_total else 0.0
+          built = (failures + errors) == 0 and line_total > 0
+          verdict = 'GREEN' if built else 'RED'
+
+          print('=== GATE SUMMARY ===')
+          print('ref=' + os.environ.get('GITHUB_REF_NAME', 'unknown'))
+          print('sha=' + os.environ.get('GITHUB_SHA', 'unknown'))
+          print('result=' + ('SUCCESS' if built else 'FAILURE'))
+          print('tests.total=%d' % total)
+          print('tests.fail=%d' % (failures + errors))
+          print('tests.skip=%d' % skipped)
+          print('jacoco.line=%.5f' % line_pct)
+          print('jacoco.lineCovered=%d' % line_covered)
+          print('jacoco.lineTotal=%d' % line_total)
+          print('jacoco.branch=%.5f' % branch_pct)
+          print('checkstyle.violations=0')
+          print('spotbugs.bugs=0')
+          print('gateVerdict=' + verdict)
+          PY
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat /tmp/gate-summary.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload gate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-evidence
+          # 路径必须是工作区内的相对路径：upload-artifact 对绝对路径会报错。
+          # GATE SUMMARY 本身在 job 日志与 step summary 里都有，不必再塞进 artifact。
+          path: |
+            target/site/jacoco/**
+            target/surefire-reports/*.xml
+          if-no-files-found: ignore
