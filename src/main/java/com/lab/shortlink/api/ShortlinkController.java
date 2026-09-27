@@ -12,10 +12,7 @@ import java.net.URI;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
@@ -33,8 +30,6 @@ import org.springframework.web.bind.annotation.RestController;
 public class ShortlinkController {
 
     private static final Logger LOG = LoggerFactory.getLogger(ShortlinkController.class);
-
-    private static final int VISIT_LOG_TIMEOUT_MILLIS = 50;
 
     private static final int VISITS_DEFAULT_LIMIT = 50;
 
@@ -85,7 +80,7 @@ public class ShortlinkController {
         if (link.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
-        recordVisitWithTimeout(code, referer);
+        visitLog.recordAsync(code, referer);
         long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
         if (elapsedMillis > redirectBudgetMillis) {
             LOG.warn("redirect budget exceeded code={} elapsedMs={} budgetMs={}",
@@ -106,23 +101,5 @@ public class ShortlinkController {
             return VISITS_DEFAULT_LIMIT;
         }
         return Math.min(limit, VISITS_MAX_LIMIT);
-    }
-
-    private void recordVisitWithTimeout(String code, String referer) {
-        Future<?> future = visitLog.recordAsync(code, referer);
-        try {
-            future.get(VISIT_LOG_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
-        } catch (TimeoutException e) {
-            LOG.error("visit log write timed out code={}", code);
-        } catch (ExecutionException e) {
-            Throwable cause = e.getCause();
-            if (cause instanceof NullPointerException) {
-                throw (NullPointerException) cause;
-            }
-            LOG.error("visit log write failed code={}", code, cause);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            LOG.error("visit log write interrupted code={}", code);
-        }
     }
 }

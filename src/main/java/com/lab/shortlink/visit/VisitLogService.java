@@ -6,11 +6,16 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -22,6 +27,13 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class VisitLogService {
+
+    private static final Logger LOG = LoggerFactory.getLogger(VisitLogService.class);
+
+    /**
+     * 旁路写入的独立预算。超过后只停止等待并记 ERROR，不中断底层写入。
+     */
+    static final long WRITE_BUDGET_MILLIS = 50;
 
     private final JdbcTemplate jdbc;
 
@@ -47,10 +59,34 @@ public class VisitLogService {
     }
 
     /**
-     * 异步记录一次访问，返回 Future 以便调用方控制超时。
+     * 异步记录一次访问：提交后立即返回，调用线程（跳转请求线程）不被统计写入阻塞。
+     *
+     * <p>写入超过 {@value #WRITE_BUDGET_MILLIS}ms 预算或失败时只记 ERROR 日志，不影响调用方。
+     * 注意「超预算」的语义是<b>不再等待</b>，不是取消写入：底层任务不会被中断，
+     * DB 慢写时数据最终仍可能落库，也不做重试或补偿。
      */
-    public Future<?> recordAsync(String code, String referer) {
-        return executor.submit(() -> record(code, referer));
+    public void recordAsync(String code, String referer) {
+        try {
+            CompletableFuture.runAsync(() -> record(code, referer), executor)
+                    .orTimeout(WRITE_BUDGET_MILLIS, TimeUnit.MILLISECONDS)
+                    .whenComplete((ignored, failure) -> logBypassFailure(code, failure));
+        } catch (RuntimeException e) {
+            LOG.error("visit log write submission failed code={}", code, e);
+        }
+    }
+
+    private static void logBypassFailure(String code, Throwable failure) {
+        if (failure == null) {
+            return;
+        }
+        Throwable cause = failure instanceof CompletionException && failure.getCause() != null
+                ? failure.getCause()
+                : failure;
+        if (cause instanceof TimeoutException) {
+            LOG.error("visit log write exceeded {}ms budget code={}", WRITE_BUDGET_MILLIS, code);
+        } else {
+            LOG.error("visit log write failed code={}", code, cause);
+        }
     }
 
     /**

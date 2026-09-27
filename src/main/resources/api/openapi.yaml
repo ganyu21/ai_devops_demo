@@ -126,6 +126,11 @@ components:
           type: string
         referer:
           type: string
+          nullable: true
+          description: >-
+            该字段始终出现在响应中（required），但值可能为 null：
+            缺失 Referer 属于正常流量（直接粘贴链接、严格的 Referrer-Policy、
+            App 内置浏览器、https 页面跳 http 目标），此时落库与返回的 referer 均为 null。
         visitedAt:
           type: string
           format: date-time

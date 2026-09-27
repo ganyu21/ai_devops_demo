@@ -52,6 +52,9 @@ class Issue3MissingRefererReproducerTest {
                 .andExpect(status().isFound())
                 .andExpect(header().string(HttpHeaders.LOCATION, targetUrl));
 
+        // 统计写入是异步旁路（OQ7 严格口径），落库可见性晚于响应返回，这里在测试线程做有界等待。
+        VisitLogAwait.untilRecorded(visitLog, code, 1);
+
         assertThat(visitLog.snapshot())
                 .filteredOn(record -> record.code().equals(code))
                 .singleElement()

@@ -24,6 +24,9 @@ import org.springframework.test.web.servlet.MvcResult;
  *
  * <p>每一个跳转用例都<b>显式带上 Referer</b>。不带 Referer 的那条路径归另一张工单负责，
  * 本类不覆盖它——覆盖了就会把那张工单「修复前红、修复后绿」的对比证据提前消耗掉。
+ *
+ * <p>统计写入是异步旁路（OQ7 严格口径）：请求返回时写入可能尚未可见。
+ * 凡是要读落库结果的用例，都先经由 {@link VisitLogAwait} 做有界等待。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -104,6 +107,8 @@ class ShortlinkControllerTest {
         mockMvc.perform(get("/" + code).header(HttpHeaders.REFERER, "HTTPS://Example.COM/Search?Q=1"))
                 .andExpect(status().isFound());
 
+        VisitLogAwait.untilRecorded(visitLog, code, 1);
+
         assertThat(visitLog.findRecentByCode(code, 10))
                 .singleElement()
                 .extracting(VisitRecord::referer)
@@ -131,8 +136,12 @@ class ShortlinkControllerTest {
 
         mockMvc.perform(get("/" + code).header(HttpHeaders.REFERER, "https://example.com/source-a"))
                 .andExpect(status().isFound());
+        // 两次跳转之间等第一次写入可见，让 visitedAt 严格有序，顺带消除并发写入的排序竞态。
+        VisitLogAwait.untilRecorded(visitLog, code, 1);
         mockMvc.perform(get("/" + code).header(HttpHeaders.REFERER, "https://example.com/source-b"))
                 .andExpect(status().isFound());
+
+        VisitLogAwait.untilRecorded(visitLog, code, 2);
 
         MvcResult result = mockMvc.perform(get("/api/links/" + code + "/visits"))
                 .andExpect(status().isOk())
@@ -157,6 +166,8 @@ class ShortlinkControllerTest {
         mockMvc.perform(get("/" + code).header(HttpHeaders.REFERER, "https://example.com/3"))
                 .andExpect(status().isFound());
 
+        VisitLogAwait.untilRecorded(visitLog, code, 3);
+
         MvcResult result = mockMvc.perform(get("/api/links/" + code + "/visits?limit=2"))
                 .andExpect(status().isOk())
                 .andReturn();
@@ -175,6 +186,8 @@ class ShortlinkControllerTest {
             mockMvc.perform(get("/" + code).header(HttpHeaders.REFERER, "https://example.com/" + i))
                     .andExpect(status().isFound());
         }
+
+        VisitLogAwait.untilRecorded(visitLog, code, 5);
 
         MvcResult result = mockMvc.perform(get("/api/links/" + code + "/visits?limit=999"))
                 .andExpect(status().isOk())

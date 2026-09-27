@@ -1,8 +1,8 @@
 # P2 实现报告：issue #2 REQ-A / REQ-B
 
-> 基线版本：v1.1  
+> 基线版本：v1.1（P2 产出时）→ **v1.2**（G2 退回后固化 OQ7 严格口径）  
 > 实现分支：`feature/issue-2-cache-ttl-and-visit-log`  
-> 阶段：P2 完成，待进入 P3（#3 缺陷热修）与 P4（冲突仲裁）
+> 阶段：P2 完成 → P3/P4 完成 → **G2 退回返修完成（2026-09-27，见文末返修记录）**
 
 ## 变更总览
 
@@ -10,11 +10,11 @@
 | --- | --- | --- |
 | REQ-A | `CachingLinkResolver.java` | 用同步 LRU + TTL 缓存替换无界 `ConcurrentHashMap`；写路径主动失效 |
 | REQ-A | `ShortlinkProperties.java`, `application.yml` | 容量上限与 TTL 走配置项注入 |
-| REQ-B | `VisitLogService.java` | 流水持久化到 H2；保留 `record()` 对 referer 的逐字行为（无空值保护） |
-| REQ-B | `ShortlinkController.java` | 新增 `GET /api/links/{code}/visits`；跳转时 50ms 独立超时写入 |
+| REQ-B | `VisitLogService.java` | 流水持久化到 H2；`recordAsync` 完全非阻塞，50ms 预算在旁路任务内部判断（G2 返修后） |
+| REQ-B | `ShortlinkController.java` | 新增 `GET /api/links/{code}/visits`；跳转只提交旁路写入，请求线程不等待（G2 返修后） |
 | REQ-B | `V2__create_visit_log.sql`, `application.yml` | 新增 visit_log 表并启用 Flyway |
-| REQ-B | `openapi.yaml` | 纯新增统计查询路径与 `VisitRecord` schema |
-| 测试 | `CachingLinkResolverTest`, `VisitLogServiceTest`, `ShortlinkControllerTest`, `VisitLogTimeoutTest` | 覆盖新增行为与边界 |
+| REQ-B | `openapi.yaml` | 纯新增统计查询路径与 `VisitRecord` schema；`referer` 保留 required + `nullable: true`（G2 返修） |
+| 测试 | `CachingLinkResolverTest`, `VisitLogServiceTest`, `ShortlinkControllerTest`, `VisitLogTimeoutTest`, `VisitLogBypassFailureTest`, `OpenApiContractTest`, `VisitLogAwait` | 覆盖新增行为与边界；含旁路超时/失败/提交被拒与契约可空性 |
 | 构建 | `pom.xml` | 新增 `spring-boot-starter-jdbc` 以使用 `JdbcTemplate` |
 
 ## REQ-A 实现细节
@@ -31,20 +31,37 @@
 - Flyway：`application.yml` 中 `spring.flyway.enabled=true`，schema gate 会在内存 H2 上跑通 V1 + V2。
 - `VisitLogService.record()`：对 `referer` 的处理与基线逐字一致——`referer.toLowerCase(Locale.ROOT)`，**没有加空值保护**，保证 #3 热修的对比证据链完整。
 - 统计接口：`GET /api/links/{code}/visits`，`limit` 选填、默认 50、硬上限 200、不分页，返回 `code/referer/visitedAt`，按 `visitedAt` 倒序。
-- 跳转写入旁路：`ShortlinkController` 调用 `visitLog.recordAsync(...).get(50, MILLISECONDS)`；超时或 DB 失败记 ERROR 日志后继续返回 302；`NullPointerException` 被原样抛出，以保留缺失 Referer 时的 500 行为（#3 范围）。
+- 跳转写入旁路（**G2 返修后版本**）：`ShortlinkController.redirect()` 只调用 `visitLog.recordAsync(code, referer)` 提交后即返回；`VisitLogService.recordAsync()` 内部用 `CompletableFuture.runAsync(...).orTimeout(50ms).whenComplete(...)`，超预算与失败都只记 ERROR。请求线程没有任何等待；返回值是 `void`，调用方没有可等待的句柄。语义细节见 `06-delivery/release-note.md` 第 3 节（超时=不再等待，不取消、不保证未写入）。
 
-## 未覆盖点（P2 现场核对）
+## 未覆盖点（G2 返修后核对）
 
 | 未覆盖点 | 位置/场景 | 原因 | 是否可接受 |
 | --- | --- | --- | --- |
 | `CachingLinkResolver` 中 `removeExpired()` 的迭代分支 | 只有长时间无人访问且容量未触顶时，过期条目才会在 `cachedEntries()` 中被清理 | 惰性清理是设计；访问路径已覆盖 | 是 |
-| `VisitLogService.shutdown()` 的 `@PreDestroy` | 应用关闭钩子 | 生命周期边界，难以在单元测试中稳定触发 | 是 |
-| `ShortlinkController.redirect` 中 `ExecutionException` 非 NPE 分支的 ERROR 日志 | 需要模拟 DB 连接失败 | 超时路径已覆盖；DB 失败路径与超时路径日志级别一致 | 是 |
+| `VisitLogService.shutdown()` 的 `@PreDestroy` | 应用关闭钩子本身 | 生命周期边界，难以在单元测试中稳定触发；其后果（线程池已关闭时提交）已由单测覆盖 | 是 |
+| `logBypassFailure` 的 `CompletionException 且 cause == null` 组合 | 异常解包的一支 | 该组合在 JDK 实现中不会出现（CompletionException 必然带 cause） | 是 |
+| `VisitLogService.size()` 的 `count == null` 分支 | 计数查询返回 null | 沿用 P2 既有实现，与本次返修无关 | 是 |
+| `ShortlinkController` 的短码碰撞重试循环体、超预算 WARN 分支、`effectiveLimit` 的 `limit <= 0` 分支 | 既有实现 | 沿用 P2 既有实现，与本次返修无关 | 是 |
+
+已消除的旧未覆盖点：原「`ExecutionException` 非 NPE 分支的 ERROR 日志」随 `recordVisitWithTimeout` 一并删除（该分支即 G2 要求移除的 NPE 特判路径）。新增覆盖：旁路超时（含「不取消」断言）、旁路失败含 NPE、旁路提交被拒（线程池已关闭）。
 
 ## 本地验证状态
 
 - 命令：`export JAVA_HOME=/opt/homebrew/opt/openjdk@21 && /opt/homebrew/bin/mvn -B clean verify`
-- 结果：见 P2 提交后的 CI/Jenkins 运行；本报告产出时本地已全绿。
+- 结果：见 P2 提交后的 CI/Jenkins 运行；**G2 返修后重跑：38 tests / 0 failures，line coverage 88.76%，Checkstyle 0，SpotBugs 0，schema gate 通过。**
+
+## G2 返修记录（2026-09-27）
+
+G2 被 Requirement Owner 退回，真实阻塞项为 `required_review_thread_resolution`（PR #17 上 6 条未解决评审线程）；OQ7 给出严格口径「redirect 请求线程根本不该为统计写入阻塞」。本次返修四项逐项落地：
+
+| # | 返修项（Lead 路由原文序号） | 实现 | 测试证据 |
+| --- | --- | --- | --- |
+| 1 | `VisitRecord.referer` 保留 required + `nullable: true` + 说明 | `openapi.yaml` | `OpenApiContractTest.visitRecordKeepsRefererRequiredButNullable` |
+| 2 | 删除 NPE 特判重抛；旁路失败只记 ERROR 仍 302 | `ShortlinkController.redirect()` 直接提交 `recordAsync`；`recordVisitWithTimeout` 及其 NPE 分支删除 | `VisitLogBypassFailureTest` |
+| 3 | 50ms 超时移出请求线程 | `VisitLogService.recordAsync()`：`runAsync + orTimeout(50ms) + whenComplete`，返回 `void` | `VisitLogTimeoutTest`（302 + 预算内 + ERROR + 不取消）；`VisitLogServiceTest.submittingAfterTheExecutorIsShutDownOnlyLogsAndDoesNotThrow` |
+| 4 | 交付说明按新架构修订 | `.devflow/issue-2/06-delivery/release-note.md`（超时语义、无界队列建议、单锁与 O(n) 扫描、未经压测） | 本表 + release-note |
+
+下游影响：5 处既有测试改为测试线程有界等待（`VisitLogAwait.untilRecorded`）；倒序用例在两次跳转间等待第一条可见以消除并发排序竞态；断言强度未降低。
 
 ## P5/P7 合并门禁口径（新增 qoderai 自动审查）
 
@@ -65,9 +82,10 @@ Dev-Waker 在编制 `cr-checklist.md` 时已把 qoderai 审查结果作为独立
 
 ## 范围纪律自审
 
-- [x] `VisitLogService.record()` 没有 referer 空值保护。
+- [x] #2 侧**没有添加** referer 空值保护（基线非目标第 1 条）；现 `record()` 中的 null 保护仅经 #3 hotfix 合并进入，仲裁记录见 `04-merge/conflict-resolution.md`。
 - [x] `openapi.yaml` 中既有 `POST /api/links`、`GET /{code}` 定义未被改动。
 - [x] `V1__create_short_link.sql` 未被修改。
 - [x] 没有调低 `coverage.line.minimum`、没有 skip 参数、没有 `--no-verify`、没有直推 main、没有 force push。
 - [x] 未引入中间件或外部服务；`spring-boot-starter-jdbc` 是框架内库，用于访问已配置的 H2 数据源。
 - [x] P5/P7 合并门禁口径与 qoderai 自动审查纪律已折入 P2 设计产物与 `cr-checklist.md`。
+- [x] G2 返修未改动 `openapi.yaml` 冻结的两条路径（变更仅在本次新增的 `VisitRecord.referer`）、未删除既有断言、未放宽任何门禁阈值、未改动 `.github/workflows/`。
