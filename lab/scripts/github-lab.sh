@@ -190,8 +190,11 @@ case "$cmd" in
     ;;
 
   pr-reply)
-    tid="${1:?评审线程 id（pr-status 的 reviewThreads.unresolvedDetail[].threadId）}"
-    bf="${2:?正文文件}"
+    # 缺参数一律输出结构化 JSON 而不是 bash 的 ${VAR:?} 原文：
+    # 调用方（数字员工）按 JSON 解析，一行 bash 报错会让它去猜错在哪。
+    tid="${1:-}"; bf="${2:-}"
+    [ -n "$tid" ] || { echo '{"error":"NO_THREAD_ID","detail":"缺评审线程 id，取法：pr-status <n> 的 reviewThreads.unresolvedDetail[].threadId"}'; exit 2; }
+    [ -n "$bf" ]  || { echo '{"error":"NO_FILE","detail":"缺正文文件。长内容与多行正文一律走文件，不要塞进 argv"}'; exit 2; }
     [ -f "$bf" ] || { echo '{"error":"NO_FILE","detail":"正文文件不存在。长内容与多行正文一律走文件，不要塞进 argv"}'; exit 2; }
     # 用 GraphQL 而不是 REST 的 pulls/<n>/comments/<id>/replies：REST 那条要的是 database id，
     # 而 pr-status 从 GraphQL 拿到的是 node id（PRRT_…），两者不通用。
@@ -204,8 +207,11 @@ case "$cmd" in
     ;;
 
   pr-resolve)
-    tid="${1:?评审线程 id}"
-    reason="${2:?裁定理由（必填——resolve 是个不可见的动作，不留理由就等于把裁定过程丢掉）}"
+    tid="${1:-}"; reason="${2:-}"
+    [ -n "$tid" ] || { echo '{"error":"NO_THREAD_ID","detail":"缺评审线程 id，取法：pr-status <n> 的 reviewThreads.unresolvedDetail[].threadId"}'; exit 2; }
+    # 理由必填，不是形式要求：resolve 之后线程会折叠，后来的人只看得到「已解决」。
+    # 不留理由就等于把裁定过程丢掉，下一次运行的人无法判断这个 resolve 是有依据的还是图省事。
+    [ -n "$reason" ] || { echo '{"error":"NO_REASON","detail":"缺裁定理由。resolve 是个不可见的动作，不留理由就等于把裁定过程丢掉"}'; exit 2; }
     # 先把理由回帖留痕，再 resolve。顺序不能反：resolve 之后线程会折叠，
     # 后来的人只看得到「已解决」，看不到当初为什么判它不阻塞。
     tmp="$(mktemp -t prresolve.XXXXXX)" || { echo '{"error":"TMPFILE"}'; exit 2; }

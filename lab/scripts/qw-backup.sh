@@ -19,6 +19,22 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 DB="$HOME/.qoderwake/data/store/qoderwake.sqlite"
 ROOT="${LAB_BACKUP_ROOT:-$HOME/qoderwake-backups}"
+# ROOT 来自环境变量，而下面要用它拼 rm -rf。设成 / 或 ~/Documents 就会删掉别人的数据，
+# 所以先把它钉死：必须是绝对路径、且不是 / 或家目录本身。
+# 空串那一支实际上到不了——${VAR:-default} 对「未设置」和「设为空」都会取默认值
+# （已实测：LAB_BACKUP_ROOT="" 会正常备份到默认目录）。留着是因为默认值一旦改动它就成了活路径，
+# 而一条走不到的分支比一条走得到却没防的路径便宜得多。
+case "$ROOT" in
+  "") echo "x LAB_BACKUP_ROOT 展开后是空串，拒绝继续（否则轮转的 rm -rf 会落到 / 上）" >&2; exit 1 ;;
+  /*) ;;
+  *)  echo "x LAB_BACKUP_ROOT 必须是绝对路径，当前是：$ROOT" >&2; exit 1 ;;
+esac
+# 去掉尾部斜杠后再比对，否则 /Users/x/ 与 /Users/x 判不出来
+ROOT_NOSLASH="${ROOT%/}"
+case "$ROOT_NOSLASH" in
+  ""|"$HOME"|"$HOME/") echo "x LAB_BACKUP_ROOT 不能是文件系统根或家目录本身：$ROOT" >&2; exit 1 ;;
+esac
+ROOT="$ROOT_NOSLASH"
 KEEP="${LAB_BACKUP_KEEP:-10}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 TAG="${1:-manual}"
@@ -91,13 +107,22 @@ cat "$DEST/MANIFEST.txt"
 # --- 4. 轮转：只保留最近 KEEP 份 ---
 # glob 展开本身就是字典序，目录名以 YYYYMMDD-HHMMSS 开头即等于时间序，无需 sort。
 # 不用 head -n -K：macOS 的 BSD head 不支持负数，且管道配 pipefail 会因提前退出而失败。
+# 只认「YYYYMMDD-HHMMSS-<标签>」这一种名字。glob 2*/ 已经不够安全：
+# 它匹配任何以 2 开头的目录，而 ROOT 一旦指错，那就是别人家的数据。
+is_snapshot() {
+  case "$(basename "$1")" in
+    [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]-*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 total=0
-for d in "$ROOT"/2*/; do [ -d "$d" ] && total=$((total + 1)); done
+for d in "$ROOT"/*/; do [ -d "$d" ] && is_snapshot "$d" && total=$((total + 1)); done
 extra=$((total - KEEP))
 if [ "$extra" -gt 0 ]; then
   i=0
-  for d in "$ROOT"/2*/; do
+  for d in "$ROOT"/*/; do
     [ -d "$d" ] || continue
+    is_snapshot "$d" || { echo "  -  跳过（不是本脚本的快照命名）：$(basename "$d")"; continue; }
     i=$((i + 1))
     [ "$i" -le "$extra" ] || break
     rm -rf "$d" && echo "rotated out: $(basename "$d")"
@@ -110,6 +135,6 @@ chmod -R go-rwx "$DEST" 2>/dev/null || true
 
 echo
 kept=0
-for d in "$ROOT"/2*/; do [ -d "$d" ] && kept=$((kept + 1)); done
+for d in "$ROOT"/*/; do [ -d "$d" ] && is_snapshot "$d" && kept=$((kept + 1)); done
 echo "备份完成：${DEST}（当前保留 $kept 份）"
 echo "提示：$ROOT 已在 lab/guard/file-guard-additions.json 的黑名单里，别让 Waker 读它。"

@@ -63,13 +63,23 @@ done
 [ -f "$REPO/Jenkinsfile" ] && warn "Jenkinsfile 又出现了——门禁在 .github/workflows/gate.yml，这个文件是已退役口径"  # hygiene-allow: 这条检查的目的就是点名那个已退役文件
 
 echo "== 3) 凭据（只核对存在性与权限，绝不打印内容）=="
+# 取权限位。stat -f '%Lp' 是 BSD/macOS 语法，GNU/Linux 是 stat -c '%a'。
+# 两者都试，都拿不到就**明说跳过了**——不要拿着空值去和 600 比，
+# 那会输出一句「权限是 ，应为 600」，读的人以为权限坏了，其实是脚本不认识这台机器。
+perm_of() {
+  stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1" 2>/dev/null || echo ""
+}
 if [ -f "$GITHUB_WAKER_TOKEN_FILE" ]; then
-  perm=$(stat -f '%Lp' "$GITHUB_WAKER_TOKEN_FILE" 2>/dev/null)
-  dperm=$(stat -f '%Lp' "$(dirname "$GITHUB_WAKER_TOKEN_FILE")" 2>/dev/null)
+  perm="$(perm_of "$GITHUB_WAKER_TOKEN_FILE")"
+  dperm="$(perm_of "$(dirname "$GITHUB_WAKER_TOKEN_FILE")")"
   size=$(wc -c < "$GITHUB_WAKER_TOKEN_FILE" 2>/dev/null | tr -d ' ')
-  echo "  ok  ${GITHUB_WAKER_TOKEN_FILE/#$HOME/~}  ${size} 字节  文件权限 ${perm}  目录权限 ${dperm}"
-  [ "$perm" = "600" ] || warn "token 文件权限是 ${perm}，应为 600"
-  [ "$dperm" = "700" ] || warn "token 所在目录权限是 ${dperm}，应为 700"
+  echo "  ok  ${GITHUB_WAKER_TOKEN_FILE/#$HOME/~}  ${size} 字节  文件权限 ${perm:-未知}  目录权限 ${dperm:-未知}"
+  if [ -z "$perm" ] || [ -z "$dperm" ]; then
+    warn "本机 stat 既不认 -f '%Lp' 也不认 -c '%a'，权限核对已跳过（不代表通过）。手工核对：ls -l 该文件与其目录，应为 600 / 700"
+  else
+    [ "$perm" = "600" ] || warn "token 文件权限是 ${perm}，应为 600"
+    [ "$dperm" = "700" ] || warn "token 所在目录权限是 ${dperm}，应为 700"
+  fi
   # 值绝不能进 git。这条检查很便宜，而一旦漏了就是公开仓里的一次凭据泄漏。
   if git -C "$REPO" grep -qIl -e "$(head -c 20 "$GITHUB_WAKER_TOKEN_FILE" 2>/dev/null)" 2>/dev/null; then
     bad "token 前缀出现在仓库内容里 —— 立即轮换该令牌并从历史中处置"

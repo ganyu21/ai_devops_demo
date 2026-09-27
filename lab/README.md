@@ -162,15 +162,43 @@ lab/install.sh                   # 写角色描述 + 合并 fileGuard 黑名单 
 所以它**填不上**「至少 1 名评审人批准」那一项——等 `required_approving_review_count` 调回 1 时这条就会显形。
 而它**会**创建评审线程，于是它实际上拥有对合并的否决权：它每留一条意见，人就必须逐条裁定。
 
-**还没证明的一步**：把线程全部 resolve 之后 #17 是否就转 `CLEAN`。`dismiss_stale_reviews_on_push: true`
-与 `require_extra_approval_for_unattributed_changes: true` 都还开着，可能另有干预。
-逐条裁定（采纳/不采纳/要求返修）是 G2 上人的活，脚本不代做。
+同一天开的 PR #20 给出了另一半对照：**0 条未解决线程 + 0 个 APPROVED + 检查全绿 = `CLEAN`**（可合并）。
+所以 `require_extra_approval_for_unattributed_changes: true` 并不会单独阻塞，缺审查在 count=0 时也不阻塞。
+把这两条对照放在一起，#17 的处置就清楚了：逐条裁定那 7 条线程并 resolve，它应当转 `CLEAN`。
+这是**推论而不是实测**——直接证明需要真的去 resolve #17，而那属于 G2 上人的活，脚本不代做。
+
+### 一个会咬人的循环：改一次就多几条线程
+
+`dismiss_stale_reviews_on_push: true` + AI 审查在每次 push 上重跑，意味着**每一次修复推送都可能开出新的阻塞线程**。
+PR #19 上实测到了：为了回应第一批意见推了 3 次，线程从 1 条涨到 5 条（其中一条是对已修好的代码的重复意见，
+它描述的 `N="${N:-0}"` 那行当时已经不存在了）。团队若不知道这一点，会把 G2 当成「改到没有意见为止」，
+而那个终点可能不存在。
+
+正确的收尾条件是**每条线程都有一次裁定**（采纳 / 不采纳 / 已修 / 重复），不是「意见数归零」。
+裁定要留痕：`pr-resolve` 强制要求填理由，并且**先回帖再 resolve**——次序不能反，
+resolve 之后线程折叠，后来的人只看得到「已解决」，看不到当初为什么判它不阻塞。
+
+```bash
+GL=./lab/scripts/github-lab.sh
+$GL pr-status <n>                       # 未解决线程含 threadId、path、line、意见摘录
+$GL pr-reply <threadId> <正文文件>       # 回帖裁定（长内容走文件，不进 argv）
+$GL pr-resolve <threadId> "<裁定理由>"   # 先回帖留痕，再标记已解决；回帖失败就不 resolve
+```
+
+这三条此前只有第一条存在。也就是说团队**结构上不可能自己解除这个阻塞**——只能停在
+`S6_MERGE_BLOCKED`。那是工具缺口，不是治理设计；治理设计要的是「resolve 必须由裁定过的人做」，
+而不是「没人能 resolve」。
 
 `scripts/github-lab.sh pr-status <n>` 现在走 GraphQL 把每项规则的实况都拉出来，
 并**由脚本自己**推出 `blockingReasons`。「没有任何 APPROVED 审查」被单列进
 `possibleAdditionalBlockers` 而**不进** `blockingReasons`——它是不是阻塞取决于
 `required_approving_review_count`，而那张 PAT 没有 Administration 权限、读不到这个值；
 把一个读不到的规则断言成阻塞原因，正是首轮那个错的形状。
+
+检查结论的分类是**穷尽**的（`pass / fail / pending / notrun / unknown`），`notrun` 与 `unknown`
+也会进 `blockingReasons`。原先只有「坏」与「还没结论」两档，于是 `CANCELLED / SKIPPED / STALE /
+NEUTRAL / STARTUP_FAILURE` 会掉进缝里被静默当成没问题；而 `rollupState` 兜不住——
+变异检验里 `SKIPPED`、`NEUTRAL`、未知值三种情况下聚合值都是 `SUCCESS`。
 
 ## 两个环境的坑（都是实测踩到的）
 
