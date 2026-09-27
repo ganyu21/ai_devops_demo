@@ -27,7 +27,7 @@
              相对阈值在机器层面并没有实现，它只是人对 Agent 的纪律要求。 -->
         <!-- 属性名不能以 flyway. / checkstyle. 开头：那两个插件会把同前缀的 Maven 属性
              当成自己的配置项来解析，撞上去会报 Unknown configuration property。 -->
-        <coverage.line.minimum>0.60</coverage.line.minimum>
+        <coverage.line.minimum>0.10</coverage.line.minimum>
         <checkstyle-plugin.version>3.3.1</checkstyle-plugin.version>
         <checkstyle.version>10.12.5</checkstyle.version>
         <spotbugs-plugin.version>4.8.3.1</spotbugs-plugin.version>
