@@ -30,7 +30,7 @@ export JAVA_HOME=/opt/homebrew/opt/openjdk@21   # 必须显式指定，见下
 5. **跳转预算**：`shortlink.redirect-budget-millis`（默认 300ms）是对外承诺，由 `RedirectBudgetTest` 守着。任何加进跳转主链路的东西（同步写库、远程调用、锁）都要先回答「它会不会把这个承诺打破」。旁路写入要有独立的短超时，超时即放弃；旁路故障不得放大成主链路 5xx。
 6. **测试断言的强度**：断言行为（响应码、记录是否真落库、字段值），不是只断言「没抛异常」。仲裁合并后如果调整了断言，要保留原测试意图，不得为了变绿而删断言。
 7. **证据与状态**：交付状态必须由「合并是否真的核实成功」推导。合并未经核实成功就写「已交付」属于虚标，一律拒。门禁结论只能引用 CI 的结构化输出（`=== GATE SUMMARY ===` 段），不接受「构建失败」这类复述——要指到具体阶段、具体文件、具体断言消息原文。
-8. **凭据**：不得出现硬编码的 token、密码、连接串。GitHub 侧一律走 `lab/scripts/github-lab.sh`，Jenkins 侧一律走 `jenkins-lab.sh`，两者的凭据都由脚本内部持有。
+8. **凭据**：不得出现硬编码的 token、密码、连接串。GitHub 侧一律走 `lab/scripts/github-lab.sh`，凭据由脚本内部持有，不进 argv、不进提交内容、不出现在任何群消息里。
 
 ## 可以忽略的检查
 
@@ -41,7 +41,7 @@ export JAVA_HOME=/opt/homebrew/opt/openjdk@21   # 必须显式指定，见下
 ## 团队约定
 
 - 分支：`feature/issue-<n>-<slug>`、`hotfix/issue-<n>-<slug>`，都从 `main` 切出。
-- `main` 上有分支规则集：必须走 PR、必需状态检查 `jenkins/verify`、评审线程必须解决、禁止 force push 与分支删除、**管理员也不得绕过**。不要建议直推 `main`，也不要建议用管理员特权合并。
+- `main` 上有分支规则集：必须走 PR、必需状态检查 `mvn-verify`、评审线程必须解决、禁止 force push 与分支删除、**管理员也不得绕过**。不要建议直推 `main`，也不要建议用管理员特权合并。
 - 提交信息要能回溯到 issue 与 REQ 编号。
 - 长文档（需求拆解、实现报告、分诊报告、仲裁记录、准出自查、交付说明）写进 `.devflow/issue-<n>/` 并提交，issue 与 PR 里只放结论、路径与下一步责任人。目录约定见 `.devflow/README.md`。
 - 冲突仲裁严禁 `git checkout --ours/--theirs` 整文件取一边，严禁 `-X ours` / `-X theirs`：git 冲突标记只表达文本重叠，真正要保护的单元是「两侧各自想生效的修复」，整文件取一边会让另一侧的修复静默丢失，而门禁还可能照样绿。

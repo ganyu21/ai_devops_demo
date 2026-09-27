@@ -9,8 +9,8 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-QW="${QODERWAKE_BIN:-$HOME/.qoderwake/qoderwake}"
-NODE="${NODE_BIN:-/opt/homebrew/bin/node}"
+# shellcheck source=env.sh
+. "$HERE/env.sh"
 CHECK=0
 [ "${1:-}" = "--check" ] && CHECK=1
 
@@ -75,8 +75,12 @@ for name in Lead-Waker PM-Waker Dev-Waker QA-Waker DevOps-Waker; do
   merged="$(python3 - "$id" "$ADDITIONS" "$CHECK" <<'PY'
 import json, os, subprocess, sys
 wid, additions_file, check = sys.argv[1], sys.argv[2], sys.argv[3]
-add = json.load(open(additions_file))['add']
-add = [os.path.expandvars(p) for p in add]
+cfg = json.load(open(additions_file))
+expand = lambda ps: [os.path.expandvars(p) for p in ps]
+add = expand(cfg.get('add') or [])
+# remove 是对象形式（{path, why}）：why 里带着公开仓卫生扫描的放行标记与理由，
+# 因为「要摘掉的条目」本身就是已退役口径的字面量。
+drop = set(expand([r['path'] if isinstance(r, dict) else r for r in (cfg.get('remove') or [])]))
 out = subprocess.run([os.path.expanduser('~/.qoderwake/qoderwake'), 'permission', 'get',
                       '--waker-id', wid, '--format', 'json'], capture_output=True, text=True)
 # 注意：permission get 的 --json 会打表格，只有 --format json 才真给 JSON。
@@ -87,11 +91,16 @@ except Exception:
 fg = d.get('fileGuard') or {}
 cur = list(fg.get('sensitiveFiles') or [])
 missing = [p for p in add if p not in cur]
+stale = [p for p in cur if p in drop]
+home = os.path.expanduser('~')
+short = lambda ps: [p.replace(home, '~') for p in ps]
 if check == '1':
-    print(('已在册' if not missing else '缺 ' + str(len(missing)) + ' 条: ' + ','.join(
-        p.replace(os.path.expanduser('~'), '~') for p in missing)))
+    parts = ['已在册' if not missing else '缺 ' + str(len(missing)) + ' 条: ' + ','.join(short(missing))]
+    if stale:
+        parts.append('待摘 ' + str(len(stale)) + ' 条: ' + ','.join(short(stale)))
+    print('；'.join(parts))
     raise SystemExit
-merged = cur + missing
+merged = [p for p in cur if p not in drop] + missing
 section = dict(fg); section['sensitiveFiles'] = merged
 section.setdefault('enabled', True)
 print(json.dumps(section, ensure_ascii=False))
@@ -102,10 +111,14 @@ PY
   elif [ "$merged" = "READ_FAIL" ]; then
     echo "  x $name 读不到现有 permission 配置，跳过（不整份覆盖，避免冲掉本机已有条目）"
   else
-    printf '%s' "$merged" > /tmp/fg-$id.json
-    "$QW" permission patch file-guard --waker-id "$id" --json-file /tmp/fg-$id.json >/dev/null 2>&1 \
+    # 用 mktemp 而不是 /tmp/fg-$id.json：可预测的 /tmp 路径谁都能先占，
+    # 而这个文件的内容随后会被 daemon 当成权限配置读进去。
+    fgf="$(mktemp -t fg-$id.XXXXXX)" || { echo "  x $name 无法创建临时文件"; continue; }
+    chmod 600 "$fgf"
+    printf '%s' "$merged" > "$fgf"
+    "$QW" permission patch file-guard --waker-id "$id" --json-file "$fgf" >/dev/null 2>&1 \
       && echo "  ok $name 黑名单已合并" || echo "  x $name patch 失败"
-    rm -f /tmp/fg-$id.json
+    rm -f "$fgf"
   fi
 done
 
@@ -113,24 +126,36 @@ echo "== 3) SOP JSON =="
 if [ "$CHECK" = 1 ]; then
   [ -f "$HERE/sop/github-lab-group-delivery.json" ] && echo "  ok 已构建" || echo "  - 尚未构建"
 else
-  "$NODE" "$HERE/sop/build-sop.js" "${SOP_VERSION:-1.0.0}" 2>&1 | sed 's/^/  /'
+  # 版本一律取 env.sh 的 LAB_SOP_VERSION。原来这里默认 1.0.0，
+  # 而 sop/github-lab-group-delivery.json 是构建产物——跑一次 install.sh 就会把
+  # 已构建好的 1.0.3 悄悄覆盖成 1.0.0，然后 publish 出去一个版本倒退的 release。
+  "$NODE" "$HERE/sop/build-sop.js" "${SOP_VERSION:-$LAB_SOP_VERSION}" 2>&1 | sed 's/^/  /'
 fi
 
 cat <<'EOF'
 
 下一步（不在本脚本里做，因为它们会改动共享状态）：
+  # 1. 发布 SOP（版本号取自 lab/env.sh 的 LAB_SOP_VERSION；release 一旦发布不可变，改了正文只能升版本）
+  source lab/env.sh
   qoderwake sop validate lab/sop/github-lab-group-delivery.json
   qoderwake sop publish  --file lab/sop/github-lab-group-delivery.json
-  qoderwake group create --title "GitHub 靶仓交付团队" \
-      --waker Lead-Waker --waker PM-Waker --waker Dev-Waker --waker QA-Waker --waker DevOps-Waker \
-      --sop github-lab-group-delivery@<版本> \
-      --param github-lab-group-delivery.delivery_lead=Lead-Waker \
-      --param github-lab-group-delivery.product_manager=PM-Waker \
-      --param github-lab-group-delivery.engineering_executor=Dev-Waker \
-      --param github-lab-group-delivery.qa_reviewer=QA-Waker \
-      --param github-lab-group-delivery.ci_gate_keeper=DevOps-Waker
+
+  # 2a. 群还不存在时：建群并同时绑定 SOP 与五个角色
+  qoderwake group create --title "$LAB_GROUP_TITLE" \
+      --waker "$LAB_WAKER_LEAD" --waker "$LAB_WAKER_PM" --waker "$LAB_WAKER_DEV" \
+      --waker "$LAB_WAKER_QA" --waker "$LAB_WAKER_DEVOPS" \
+      --sop "${LAB_SOP_ID}@${LAB_SOP_VERSION}" \
+      --param "${LAB_SOP_ID}.delivery_lead=${LAB_WAKER_LEAD}" \
+      --param "${LAB_SOP_ID}.product_manager=${LAB_WAKER_PM}" \
+      --param "${LAB_SOP_ID}.engineering_executor=${LAB_WAKER_DEV}" \
+      --param "${LAB_SOP_ID}.qa_reviewer=${LAB_WAKER_QA}" \
+      --param "${LAB_SOP_ID}.ci_gate_keeper=${LAB_WAKER_DEVOPS}"
+
+  # 2b. 群已存在、只是版本落后时：用这条重绑（它会先打印当前绑定，并要求输入 yes）
+  ./lab/scripts/qw-group.sh rebind
 
 绑定之后必须先预热再验证（绑定 SOP ≠ Waker 读得到正文）：
-  发一条预热消息触发物化 → 再发一条验证消息，要求引用 SOP 正文原文。
-  跳过预热就上真需求，五个角色会照着 SOP 标题即兴发挥，而且看起来一切正常。
+  ./lab/scripts/qw-group.sh smoke     # 预热消息，第 3 问就是版本判据
+  ./lab/scripts/qw-group.sh watch 10  # 看回复
+跳过预热就上真需求，五个角色会照着 SOP 标题即兴发挥，而且看起来一切正常。
 EOF

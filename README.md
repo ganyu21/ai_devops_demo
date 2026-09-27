@@ -53,14 +53,41 @@ curl -i http://localhost:8081/<返回的 code>
 
 ## 变更怎么进来
 
-`main` 上有分支规则集：
+`main` 上有一条分支规则集（`protect-main`，`enforcement: active`）：
 
 - 所有变更必须走 Pull Request，**不能直推**；
-- 管理员也不得绕过（`bypass_actors` 为空）；
-- 禁止 force push 与分支删除；
-- 评审线程必须解决之后才能合并。
+- `bypass_actors` 为空，所以**管理员也不得绕过**；
+- 禁止 force push（`non_fast_forward`）与分支删除（`deletion`）；
+- 评审线程必须全部解决之后才能合并（`required_review_thread_resolution: true`）；
+- 新提交会 dismiss 已有的审查（`dismiss_stale_reviews_on_push: true`）；
+- `required_approving_review_count` 当前是 **0**。这是**临时**状态：单人账号仓库里，PR 作者无法给自己投出有效审查，
+  把它设为 1 会让每一轮都卡死在合并这一步、演示不下去。等第二个评审身份（bot 账号）备好就该调回 1，
+  那时「结构性无法自审自批」这条治理事实才会重新变成活的教材。另有
+  `require_extra_approval_for_unattributed_changes: true` 开着（含义与生效条件未实测，别当结论引用）；
+- 必需状态检查：**`mvn-verify`**。
 
-CI 由 Jenkins 跑，结论通过 commit status 回写到 GitHub（context `jenkins/verify`），见 `Jenkinsfile`。凭据只存在 Jenkins 的 credential store 里，参与流程的自动化角色看不到它。
+现状可以直接查，不要凭印象：`./lab/scripts/github-lab.sh ruleset` 列出规则集，
+`gh api repos/<owner>/<repo>/rulesets/<id>` 看每一条规则的参数。
+
+门禁跑在 GitHub Actions 上（`.github/workflows/gate.yml`，job `mvn-verify`）。check run 本身就是状态，
+不需要「构建完再往 PR 上回写一次」这条桥。改这个 workflow 需要 Workflows 权限，而数字员工那张
+fine-grained PAT 没有——所以「改门禁让构建必绿、再自己合并」这条路是被权限结构性堵死的，不是靠自觉。
+
+一条实测结论值得单独记：`mergeStateStatus: BLOCKED` **不告诉你为什么**。首轮交付里，数字员工看到
+BLOCKED 加上 `reviewDecision` 为空，就把原因写成「需要至少 1 名有权限的评审人」，还在 `state.json` 里
+把「评审线程未解决」填成了 `false`——而那条 PR 上实际有 **7 条 qoderai 的评审线程，一条都没解决**，
+且 `required_approving_review_count` 当时是 0，所以「至少 1 名评审人」那条规则根本没生效。
+根因在工具：当时的 `pr-status` 不返回评审线程，调用方无从得知。
+
+后来用 PR #19 做了一次对照把规则分开了：0 条线程 + 0 个批准时是 `UNSTABLE`（不阻塞），
+AI 只留下 **1 条**评审线程、检查全绿时就变成了 `BLOCKED`。所以真正卡住的是
+`required_review_thread_resolution`，一条未解决线程就够——这也意味着 AI 审查实际上握有对合并的否决权：
+它每留一条意见，人就必须逐条裁定。
+
+`github-lab.sh pr-status <n>` 现在会把每项规则的实况拉出来并自己推出 `blockingReasons`，
+就是为了不给调用方留一个「凭印象填原因」的空档；读不到的规则（例如那个需要 Administration
+权限才能看的 `required_approving_review_count`）单列进 `possibleAdditionalBlockers`，
+不断言成阻塞原因。详见 `lab/README.md`。
 
 ## 目录
 
@@ -76,6 +103,9 @@ src/main/resources/
   api/openapi.yaml            冻结的对外契约
   db/migration/V1__*.sql      已合入即只读的迁移脚本
 config/checkstyle/            静态检查基线
-Jenkinsfile                   CI 门禁 + GitHub 状态回写桥
-docs/                         培训大纲、实验手册、操作手册
+.github/workflows/            CI 门禁 + AI 代码审查（Qoder Action）
+AGENTS.md                     审查口径与团队纪律，Qoder CLI 会自动加载
+lab/                          数字员工团队的全部可版本化资产（角色、SOP、封装脚本、守护配置）
+docs/                         学员版实验手册（讲师版含参考答案，不在本公开仓里）
+.devflow/                     每轮的流程产物，是交付物不是临时文件
 ```
