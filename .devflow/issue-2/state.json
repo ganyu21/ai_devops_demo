@@ -82,7 +82,7 @@
   "p6": {
     "status": "PASS",
     "report": ".devflow/issue-2/06-qa/acceptance-report.md",
-    "reportHeadSha": "920b80ab02728a0724653d074cc12a607ee7c868",
+    "reportHeadSha": "7f6127051b74321f4178805801dcd5e787c0e4e7",
     "evidence": {
       "source": "QA-Waker runtime HTTP observation on current working tree at 7f61270",
       "summary": "REQ-A 1-6 PASS，REQ-B 1-8 PASS；OQ7 异步旁路、VisitRecord referer required + nullable、旁路失败 302、持续风险披露均复核；运行时错误探针确认 3020 字符 Referer 触发后台 ERROR 但主链路仍 302"
@@ -93,7 +93,7 @@
     "stage": "G2",
     "state": "S6_CLEARED",
     "clearedAt": "2026-09-27T15:50:00Z",
-    "clearedAtSha": "920b80ab02728a0724653d074cc12a607ee7c868",
+    "clearedAtSha": "7f6127051b74321f4178805801dcd5e787c0e4e7",
     "blockingReasons": [],
     "reviewThreadsTotal": 16,
     "unresolvedReviewThreads": 0,
@@ -116,10 +116,10 @@
         }
       ]
     },
-    "note": "阻塞已解除；reviewDecision=null 不构成阻塞（required_approving_review_count=0，见 G2 退回裁定原文）。2026-09-27 15:50Z 在 SHA 7f61270 上 reviewThreads 16 total / 0 unresolved、blockingReasons 为空、qoderai 已给出 APPROVED。当前 commit 将 state.json 的 clearedAtSha 推进到本次推送后的新 head；新 head 将由 DevOps-Waker 重新读取 pr-status 确认。",
+    "note": "阻塞已解除；reviewDecision=null 不构成阻塞（required_approving_review_count=0，见 G2 退回裁定原文）。2026-09-27 15:50Z 在 SHA 7f61270 上 reviewThreads 16 total / 0 unresolved、blockingReasons 为空、qoderai 已给出 APPROVED。clearedAtSha 指向被验证的代码 SHA 7f61270，而非文档收口提交；文档提交（此前 5802564 及本次修正后的新 head）仅包含 acceptance-report.md / state.json 等 .devflow 产物，不含 src/ 或 pom.xml 等代码变更。state.json 不存储『交付 head』常量——合并前 head 可能继续移动，应从 PR 实时读取。",
     "unblockPath": "已完成的解除路径：Dev 返修提交（8c42c51）→ 推送（f3305d9、a3ac4b5、7f61270）→ 新 SHA 的 mvn-verify 与 qoderai 审查自动触发 → 三轮共 16 条线程逐条回帖 + pr-resolve → blockingReasons 清空；QA-Waker 完成 P6 独立验收（PASS）并追加 Owner 要求的观察句。剩余路径：DevOps-Waker 在当前最新 SHA 上复读 pr-status → Lead-Waker 确认 blockingReasons=[] 后重新提交 G2，批准须落在当前最新 SHA。禁止手动 dispatch mvn-verify、禁止 dismiss review、禁止改动 .github/workflows/。"
   },
   "nextAction": "等待 DevOps-Waker 在当前最新 SHA 上复读 pr-status；随后由 Lead-Waker 主持 G2 重新提交并由 Requirement Owner 在当前最新 SHA 上批准。若 qoderai 重审开新线程，Dev-Waker 照旧逐条回帖 + pr-resolve。",
   "createdAt": "2026-09-27T08:25:00Z",
-  "updatedAt": "2026-09-27T22:42:00Z"
+  "updatedAt": "2026-09-28T08:00:00Z"
 }
