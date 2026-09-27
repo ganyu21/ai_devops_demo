@@ -3,12 +3,21 @@
   "title": "解析缓存加容量上限与 TTL；访问流水落库并提供统计查询接口",
   "relatedIssues": [3],
   "requirementOwner": "human/owner",
-  "currentPhase": "P5_CLEAN_P6_PASS_G2_PENDING",
+  "currentPhase": "P7",
   "baselineVersion": "v1.2",
   "baselineBranch": "feature/issue-2-cache-ttl-and-visit-log",
   "mergeCommit": "671cca8",
   "prNumber": 17,
   "prUrl": "https://github.com/ganyu21/ai_devops_demo/pull/17",
+  "mergedToMain": {
+    "mergeCommitSha": "a66c58aa9a62b2a788b3ff0c3ab66deea12c850a",
+    "shortSha": "a66c58a",
+    "mergedAt": "2026-09-27T23:48:28Z",
+    "mergedBy": "ganyu21",
+    "mainGateRunId": "36359920872",
+    "mainGateVerdict": "GREEN",
+    "verifiedBy": "DevOps-Waker"
+  },
   "gateDecisions": [
     {
       "gate": "G1",
@@ -95,7 +104,7 @@
     "clearedAt": "2026-09-27T15:50:00Z",
     "clearedAtSha": "7f6127051b74321f4178805801dcd5e787c0e4e7",
     "blockingReasons": [],
-    "reviewThreadsTotal": 16,
+    "reviewThreadsTotal": 19,
     "unresolvedReviewThreads": 0,
     "evidence": {
       "source": "github-lab.sh pr-status 17（2026-09-27T15:50Z 读，SHA 7f61270）",
@@ -119,7 +128,7 @@
     "note": "阻塞已解除；reviewDecision=null 不构成阻塞（required_approving_review_count=0，见 G2 退回裁定原文）。2026-09-27 15:50Z 在 SHA 7f61270 上 reviewThreads 16 total / 0 unresolved、blockingReasons 为空、qoderai 已给出 APPROVED。clearedAtSha 指向被验证的代码 SHA 7f61270，而非文档收口提交；文档提交（此前 5802564 及本次修正后的新 head）仅包含 acceptance-report.md / state.json 等 .devflow 产物，不含 src/ 或 pom.xml 等代码变更。state.json 不存储『交付 head』常量——合并前 head 可能继续移动，应从 PR 实时读取。",
     "unblockPath": "已完成的解除路径：Dev 返修提交（8c42c51）→ 推送（f3305d9、a3ac4b5、7f61270）→ 新 SHA 的 mvn-verify 与 qoderai 审查自动触发 → 三轮共 16 条线程逐条回帖 + pr-resolve → blockingReasons 清空；QA-Waker 完成 P6 独立验收（PASS）并追加 Owner 要求的观察句。剩余路径：DevOps-Waker 在当前最新 SHA 上复读 pr-status → Lead-Waker 确认 blockingReasons=[] 后重新提交 G2，批准须落在当前最新 SHA。禁止手动 dispatch mvn-verify、禁止 dismiss review、禁止改动 .github/workflows/。"
   },
-  "nextAction": "等待 DevOps-Waker 在当前最新 SHA 上复读 pr-status；随后由 Lead-Waker 主持 G2 重新提交并由 Requirement Owner 在当前最新 SHA 上批准。若 qoderai 重审开新线程，Dev-Waker 照旧逐条回帖 + pr-resolve。",
+  "nextAction": "P7 收尾已完成：state.json、release-note.md、issue #2/#3 结论评论均已更新。等待 DevOps-Waker 独立核实 git log origin/main 包含 a66c58a 并回报 main 门禁 run 36359920872 的 === GATE SUMMARY ===；两项核实通过后由 Lead-Waker 宣布完成。",
   "createdAt": "2026-09-27T08:25:00Z",
-  "updatedAt": "2026-09-28T08:00:00Z"
+  "updatedAt": "2026-09-28T07:55:00Z"
 }
