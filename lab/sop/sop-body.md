@@ -35,7 +35,7 @@ GitHub 侧的一切读写都走封装脚本 `~/PycharmProjects/ai_devops_demo/la
 
 **`git push` 也必须走这个脚本的 `push` 子命令**，不要用裸 `git push`：机器上自己的 credential helper 里存着有 admin 权限的仓主 token，用它就是静默提权。脚本会把 `credential.helper` 置空，改用 `GIT_ASKPASS` 垫片走那张受限 PAT。
 
-用的是一张 fine-grained PAT，只授权 `ganyu21/ai_devops_demo` 这一个仓，权限只有 Contents / Pull requests / Issues 的读写，**没有 Administration、没有 Workflows**（所以改不了规则集，也改不了 `.github/workflows/` 下的门禁定义——这两条都已实测被拒）。这意味着：改不了规则集、删不了仓、动不了分支保护。这不是限制被绕过的障碍，这是设计——如果一个动作需要更高权限才能完成，那它本来就不该由数字员工完成，写进阻塞交给人。
+用的是一张 fine-grained PAT，只授权 `ganyu21/ai_devops_demo` 这一个仓，权限只有 Contents / Pull requests / Issues 的读写，**没有 Administration、没有 Workflows**（所以改不了 `main` 上的分支规则集，也改不了 `.github/workflows/` 下的门禁定义——这两条都已实测被拒）。删不了仓、动不了规则集、也绕不开必需状态检查。这不是限制被绕过的障碍，这是设计——如果一个动作需要更高权限才能完成，那它本来就不该由数字员工完成，写进阻塞交给人。
 
 ## 流程与交接
 

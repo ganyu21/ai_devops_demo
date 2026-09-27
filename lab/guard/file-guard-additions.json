@@ -1,11 +1,17 @@
 {
-  "_comment": "要追加到每个 Waker 的 fileGuard.sensitiveFiles 的路径。用 ${HOME} 占位而不是写死家目录：这份文件在公开仓里，不该带上机器用户名。install.sh 会展开占位符，并与该 Waker 现有的清单合并（不整份替换，避免冲掉本机已有的条目）。",
+  "_comment": "fileGuard 黑名单的增量。用 ${HOME} 占位而不是写死家目录：这份文件在公开仓里，不该带上机器用户名。install.sh 会展开占位符，与该 Waker 现有清单合并（add），并摘掉 remove 里列出的历史条目——不整份替换，避免冲掉本机已有的其他条目。",
+  "_note_keychain": "gh 的仓主 OAuth token 存在 macOS 钥匙串里（已实测：~/.config/gh/hosts.yml 里没有 oauth_token 键），而 fileGuard 是路径守卫，拦不到 `security find-generic-password` 或 `git credential fill`。所以「Waker 拿不到 admin token」这条不是 fileGuard 保证的，是靠 github-lab.sh 把 credential.helper 置空 + 只经 GIT_ASKPASS 递交受限 PAT 的调用纪律保证的。不要把 ~/.config/gh/ 加进黑名单来「补这个洞」：它里面没有 token，而 gh 自己每次调用都要读这个目录，拉黑有打断 GitHub 访问的风险。",
+  "_note_remove": "remove 用对象形式（path + why）而不是裸字符串，因为要摘掉的条目本身就是已退役口径的字面量，公开仓卫生扫描会命中它们。JSON 不支持行内注释，所以把 hygiene-allow 标记与理由放进 why 字段——扫描器按整行匹配，标记与字面量在同一行即可放行。",
   "add": [
     "${HOME}/.config/ai-devops-lab/",
-    "${HOME}/jenkins-lab/home/",
-    "${HOME}/jenkins-lab/admin-token.txt",
-    "${HOME}/jenkins-lab/secrets/",
     "${HOME}/.qoderwake/data/store/",
-    "${HOME}/.ssh/"
+    "${HOME}/.qoderwake/.auth/",
+    "${HOME}/.ssh/",
+    "${HOME}/qoderwake-backups/"
+  ],
+  "remove": [
+    { "path": "${HOME}/jenkins-lab/home/", "why": "hygiene-allow: 已退役 CI 的家目录，列在这里是为了让 install.sh 把它从活体配置里摘掉" },
+    { "path": "${HOME}/jenkins-lab/admin-token.txt", "why": "hygiene-allow: 同上，已退役 CI 的管理员凭据文件" },
+    { "path": "${HOME}/jenkins-lab/secrets/", "why": "hygiene-allow: 同上，已退役 CI 的凭据目录" }
   ]
 }
