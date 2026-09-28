@@ -104,7 +104,7 @@
     "clearedAt": "2026-09-27T15:50:00Z",
     "clearedAtSha": "7f6127051b74321f4178805801dcd5e787c0e4e7",
     "blockingReasons": [],
-    "reviewThreadsTotal": 19,
+    "reviewThreadsTotalAtClearedSha": 16,
     "unresolvedReviewThreads": 0,
     "evidence": {
       "source": "github-lab.sh pr-status 17（2026-09-27T15:50Z 读，SHA 7f61270）",
