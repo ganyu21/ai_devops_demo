@@ -54,6 +54,15 @@ build_pmap() {
   PMAP=$(mktemp -t qwpmap.XXXXXX) || die "无法创建临时文件"
   chmod 600 "$PMAP"
   timeout 60 "$QW" group show "$GROUP" --json 2>/dev/null | "$NODE" "$RENDER" members > "$PMAP"
+  # 映射取不到时不许静默降级。渲染器对查不到的 id 会原样打出 cpart_… 兜底，
+  # 于是 tail/watch 看起来「消息都在、只是名字变成了 id」，而真实原因可能是
+  # group show 超时或鉴权坏了——上面那个 2>/dev/null 正好把报错吞掉了。
+  # 这与 pendcount 解析失败要输出 ERR 而不是空串是同一个道理：操作员唯一的观察
+  # 窗口降级时必须吵出来，否则读不懂的那几分钟正好是最需要读懂的时候。
+  if [ ! -s "$PMAP" ]; then
+    echo "⚠ 参与者映射为空：下面所有发信人会显示成 cpart_… 原始 id，不是消息本身坏了。" >&2
+    echo "   排查: $QW group show $GROUP --json | $NODE $RENDER members" >&2
+  fi
 }
 cleanup() { [ -n "$PMAP" ] && rm -f "$PMAP"; PMAP=""; return 0; }
 trap cleanup EXIT INT TERM
