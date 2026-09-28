@@ -28,6 +28,26 @@ else
   FILES=$(git -C "$REPO" ls-files)
 fi
 
+# 第一道检查：.instructor/ 整个目录都不该进版本库，所以这里查的是**路径**不是内容。
+# 它放的是讲师版答案（Open Question 参考裁定、缺陷确切行号、红灯分支意图、未覆盖点
+# 分类答案）与含内部单号的退役脚本备份，靠 .gitignore 排除。会走到这一步只有两种
+# 可能：有人 git add -f，或者 .gitignore 被改坏了——两种都必须当场拦下。
+# 放在内容规则之前，因为这种情况下「哪一行有内部字样」已经不是重点了。
+LEAKED=$(printf '%s\n' "$FILES" | grep -E '^\.instructor(/|$)' || true)
+if [ -n "$LEAKED" ]; then
+  echo "✗ .instructor/ 下的文件被纳入了版本控制：" >&2
+  printf '%s\n' "$LEAKED" | sed 's/^/    /' >&2
+  cat >&2 <<'EOF'
+
+    靶仓是 PUBLIC、学员会 clone。这个目录里是讲师版答案与含内部单号的退役脚本备份，
+    提交进公开仓的历史就永久可检索、删不掉（本仓已因 PR #7 / 2e23983 泄过一次，
+    而改历史与关规则集都是被禁止的处置方式）。
+    处置：git rm --cached <路径>，并确认 .gitignore 里有 /.instructor/。
+    不要用 git add -f，也不要把 .instructor/ 加进本脚本的 SELF_EXCLUDE。
+EOF
+  exit 1
+fi
+
 # 规则：name<TAB>ERE。用 ERE 而不是 Perl 正则，因为要交给 grep -E，
 # 而 grep -E 在 macOS(BSD) 与 GNU 下的行为差异最小的就是这一档。
 RULES='内部协作平台 CLI 调用	\ba1[[:space:]]+(repo|project|ci|quality|workitem)\b

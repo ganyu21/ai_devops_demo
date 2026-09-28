@@ -9,3 +9,15 @@ data/
 .classpath
 .project
 .settings/
+
+# 讲师版资料。靶仓是 PUBLIC、学员会 clone，而这个目录放的是**答案**：
+# 10 条 Open Question 的参考裁定、缺陷确切行号、红灯分支 lab/predictable-code
+# 的设计意图、未覆盖点分类的参考答案，以及含内部单号的退役流程脚本备份。
+# 学员版在 docs/ 下，那才是要进版本库的。
+#
+# ⚠ 本仓已经因此泄过一次（PR #7 / 2e23983 把讲师版提交进去了）。公开仓的历史
+# 永久可检索，删文件不等于删内容，而改历史与关规则集都是被禁止的处置方式。
+# 所以这里除了 ignore，还有第二道守卫：lab/scripts/check-public-hygiene.sh
+# 一旦发现 .instructor/ 下任何文件被纳入版本控制就直接失败。
+# 不要用 git add -f 绕过它。
+/.instructor/
