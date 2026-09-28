@@ -54,6 +54,22 @@ build_pmap() {
   PMAP=$(mktemp -t qwpmap.XXXXXX) || die "无法创建临时文件"
   chmod 600 "$PMAP"
   timeout 60 "$QW" group show "$GROUP" --json 2>/dev/null | "$NODE" "$RENDER" members > "$PMAP"
+  # 映射不可用时不许静默降级。渲染器对查不到的 id 会原样打出 cpart_… 兜底，
+  # 于是 tail/watch 看起来「消息都在、只是名字变成了 id」，而真实原因可能是
+  # group show 超时或鉴权坏了——上面那个 2>/dev/null 正好把报错吞掉了。
+  # 这与 pendcount 解析失败要输出 ERR 而不是空串是同一个道理：操作员唯一的观察
+  # 窗口降级时必须吵出来，否则读不懂的那几分钟正好是最需要读懂的时候。
+  #
+  # 判据要跟渲染器（qw-render.js 的 render 模式）逐字对齐，不能只看「文件非空」：
+  # 渲染器按 TAB 切、要求 >=2 段，然后用 names[id] || id 兜底——所以**名字为空**
+  # 的那一行同样会退回原始 id。只判 -s 会漏掉三种情况：只有空白字符的文件、
+  # 渲染器将来在错误路径上打出的一行 ERR/提示（无 TAB，非空但不含任何映射）、
+  # 以及 id 有值而名字为空的行。这里数的就是「真正能用来解析的映射条数」。
+  MAPN=$(awk -F'\t' 'NF>=2 && $1!="" && $2!="" {n++} END{print n+0}' "$PMAP")
+  if [ "${MAPN:-0}" -eq 0 ]; then
+    echo "⚠ 参与者映射不可用（0 条可解析）：下面所有发信人会显示成 cpart_… 原始 id，不是消息本身坏了。" >&2
+    echo "   排查: $QW group show $GROUP --json | $NODE $RENDER members" >&2
+  fi
 }
 cleanup() { [ -n "$PMAP" ] && rm -f "$PMAP"; PMAP=""; return 0; }
 trap cleanup EXIT INT TERM
