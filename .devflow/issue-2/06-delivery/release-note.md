@@ -2,7 +2,7 @@
 
 > 基线：**v1.2**（G2 退回后由 PM 固化 OQ7 严格口径）
 > 分支：`feature/issue-2-cache-ttl-and-visit-log`　PR：`#17`
-> 本文件对应 **G2 退回后的返修实现**，状态：待重走 P5 → P6 → P7 与 G2。
+> 本文件对应 **G2 退回后的返修实现**，状态：已合入 main（merge commit `a66c58a`），main 门禁 run `36359920872` 结论 GREEN。
 
 ## 1. 交付范围
 
@@ -48,10 +48,11 @@
 | --- | --- |
 | 本地 `mvn -B clean verify`（返修后） | ✅ 38 tests / 0 failures；line coverage 88.76%（阈值 0.60）；Checkstyle 0；SpotBugs 0；schema gate 在内存库跑通 V1+V2 |
 | Jenkins build 15（返修前历史结论） | ✅ `gateVerdict=GREEN`，35/0/0，jacoco.line=83.83%——**返修后不再作为最终口径** |
-| GitHub Actions `mvn-verify`（本文件提交所在 SHA） | ✅ 自动触发并完成：`state=SUCCESS`（提交 `a3ac4b5`，`github-lab.sh pr-status` 读取） |
-| qoderai 审查（提交 `a3ac4b5`） | ✅ `COMPLETED/SUCCESS`；`reviewThreads` 13 total / 0 unresolved；三轮全部线程逐条回帖 + `pr-resolve`（判定见 `cr-checklist.md` 对照表） |
-| 合并资格（提交 `a3ac4b5`） | ✅ `blockingReasons=[]`、`mergeStateStatus=CLEAN`、`mergeable=MERGEABLE`（`reviewDecision=null` 不构成阻塞：`required_approving_review_count` 为 0） |
-| P6 独立验收 | ⏳ QA-Waker 重做（含 REQ-B-5 预算维度证据、REQ-A-5 新增 schema 可空性复核）——须落在此 SHA 或其后最新 SHA |
+| GitHub Actions `mvn-verify`（PR #17 最终 head `b20de48`） | ✅ `github-lab.sh pr-status 17`：`mvn-verify` COMPLETED/SUCCESS，`qoder-review` COMPLETED/SUCCESS，`reviewThreads` 19 total / 0 unresolved，`blockingReasons=[]`，`mergeStateStatus=CLEAN` |
+| qoderai 审查（PR #17 最终 head `b20de48`） | ✅ `reviewDecision` 无阻塞结论；全部线程逐条回帖 + `pr-resolve`（判定见 `cr-checklist.md` 对照表） |
+| G2 人工门禁 | ✅ Requirement Owner 于 2026-09-27 批准合并 |
+| 合入 main 后门禁（run `36359920872`） | ✅ `result=SUCCESS`，`gateVerdict=GREEN`；38 tests / 0 fail / 0 skip；jacoco.line=88.75740%（150/169）；checkstyle.violations=0；spotbugs.bugs=0 |
+| P6 独立验收 | ✅ QA-Waker 在 `7f61270` 上独立验收 PASS（含 REQ-B-5 预算维度、REQ-A-5 可空性、旁路 NPE 仍 302） |
 
 ## 7. 未覆盖点（分类，见 `02-dev/impl-report.md` 明细）
 
